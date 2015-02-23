@@ -12,7 +12,9 @@
 # This file contains the main BitCurator Access Webtools application.
 #
 
-from flask import Flask, render_template, url_for, Response, stream_with_context, request
+from flask import Flask, render_template, url_for, Response, stream_with_context, request, flash, session, redirect
+from bcaw_forms import ContactForm, SignupForm, SigninForm
+
 import pytsk3
 import os, sys, string, time, re
 from mimetypes import MimeTypes
@@ -22,17 +24,19 @@ from bcaw_utils import bcaw
 from bcaw import app
 import bcaw_db
 from sqlalchemy import *
+from bcaw_userlogin_db import db_login, User, dbinit
 '''
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relation, sessionmaker
 '''
-
-
 image_list = []
 file_list_root = []
 
-####image_dir = app.config['IMAGEDIR'] FIXME
-image_dir = "/vagrant/disk-images"
+#FIXME: The following line should be called in __init__.py once.
+# Since that is not being recognized here, app.config.from_object is
+# added here. This needs to be fixed.
+app.config.from_object('bcaw_default_settings')
+image_dir = app.config['IMAGEDIR']
 num_images = 0
 image_db = []
 
@@ -55,14 +59,14 @@ def bcawBrowseImages():
 
     for img in os.listdir(image_dir):
         if img.endswith(".E01") or img.endswith(".AFF"):
-            #print img
+            ## print img
             global image_list
             image_list.append(img)
 
             dm = bcaw()
             image_path = image_dir+'/'+img
             dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
-            idb = bcaw_db.DimacImages.query.filter_by(image_name=img).first()
+            idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
             image_db.append(idb)
             ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
             image_index +=1
@@ -70,7 +74,7 @@ def bcawBrowseImages():
             continue
   
     # Render the template for main page.
-    #print 'D: Image_list: ', image_list
+    # print 'D: Image_list: ', image_list
     global num_images
     num_images = len(image_list)
 
@@ -95,7 +99,7 @@ def bcawGetImageIndex(image, is_path):
 #
 @app.route('/image/<image_name>')
 def image(image_name):
-    #print("Partitions: Rendering Template with partitions for img: ", image_name)
+    # print("D: Partitions: Rendering Template with partitions for img: ", image_name)
     num_partitions = bcaw.num_partitions_ofimg[str(image_name)]
     part_desc = []
     image_index =  bcawGetImageIndex(image_name, is_path=False)
@@ -116,15 +120,15 @@ def image_psql(image_name):
 
     return render_template("db_image_template.html", 
                            image_name = image_name,
-                           image=image_db[image_index])
+                           image=image_db[int(image_index)])
 
 #
 # Template rendering for Directory Listing per partition
 #
 @app.route('/image/<image_name>/<image_partition>')
 def root_directory_list(image_name, image_partition):
-    #print("Files: Rendering Template with files for partition: ",
-                            #image_name, image_partition)
+    # print("D: Files: Rendering Template with files for partition: ",
+                            ## image_name, image_partition)
     image_index = bcawGetImageIndex(str(image_name), False)
     dm = bcaw()
     image_path = image_dir+'/'+image_name
@@ -151,8 +155,8 @@ def stream_template(template_name, **context):
 @app.route('/image/<image_name>/<image_partition>/<path:path>')
 
 def file_clicked(image_name, image_partition, path):
-    #print("Files: Rendering Template for subdirectory or contents of a file: ",
-          #image_name, image_partition, path)
+    # print("D: Files: Rendering Template for subdirectory or contents of a file: ",
+          ## image_name, image_partition, path)
     
     image_index = bcawGetImageIndex(str(image_name), False)
     image_path = image_dir+'/'+image_name
@@ -160,7 +164,7 @@ def file_clicked(image_name, image_partition, path):
     file_name_list = path.split('/')
     file_name = file_name_list[len(file_name_list)-1]
 
-    #print "D: File_path after manipulation = ", path
+    # print "D: File_path after manipulation = ", path
 
     # To verify that the file_name exsits, we need the directory where
     # the file sits. That is if tje file name is $Extend/$RmData, we have
@@ -171,7 +175,7 @@ def file_clicked(image_name, image_partition, path):
     temp_list = file_name_list[0:(len(temp_list)-1)]
     parent_dir = '/'.join(temp_list)
 
-    #print("D: Invoking TSK API to get files under parent_dir: ", parent_dir)
+    # print("D: Invoking TSK API to get files under parent_dir: ", parent_dir)
 
     # Generate File_list for the parent directory to see if the
     dm = bcaw()
@@ -182,11 +186,10 @@ def file_clicked(image_name, image_partition, path):
     for item in file_list:
         ## print("D: item-name={} file_name={} ".format(item['name'], file_name))
         if item['name'] == file_name:
-            #print("D : File {} Found in the list: ".format(file_name))
+            print("D : File {} Found in the list: ".format(file_name))
             break
     else:
         print("D: File_clicked: File {} not found in file_list".format(file_name))
-        #continue            
 
     if item['isdir'] == True:
         # We will send the file_list under this directory to the template.
@@ -199,7 +202,7 @@ def file_clicked(image_name, image_partition, path):
         with app.test_request_context():
             url = url_for('file_clicked', image_name=str(image_name), image_partition=image_partition, path=path )
 
-        #print (">> Rendering template with URL: ", url)
+        # print (">> Rendering template with URL: ", url)
         return render_template('fl_dir_temp_ext.html',
                    image_name=str(image_name),
                    partition_num=image_partition,
@@ -208,7 +211,7 @@ def file_clicked(image_name, image_partition, path):
                    url=url)
 
     else:
-        #print("Downloading File: ", item['name'])
+        # print(">> Downloading File: ", item['name'])
         # It is an ordinary file
         f = fs.open_meta(inode=item['inode'])
     
@@ -222,12 +225,12 @@ def file_clicked(image_name, image_partition, path):
             available_to_read = min(BUFF_SIZE, size - offset)
             data = f.read_random(offset, available_to_read)
             if not data:
-                #print("Done with reading")
+                # print("Done with reading")
                 break
 
             offset += len(data)
             total_data = total_data+data 
-            #print "Length OF TOTAL DATA: ", len(total_data)
+            # print "Length OF TOTAL DATA: ", len(total_data)
            
 
         mime = MimeTypes()
@@ -246,6 +249,84 @@ def file_clicked(image_name, image_partition, path):
         contents=str(data))
         #contents = data.decode("utf-8"))
         '''
+@app.route('/testdb')
+def testdb():
+    '''
+    if db_login.session.query("1").from_statement("SELECT 1").all():
+        return 'It works.'
+    else:
+        return 'Something is broken.'
+    '''
+    if bcaw_db.db.session.query("1").from_statement("SELECT 1").all():
+        return 'It works.'
+    else:
+        return 'Something is broken.'
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    ##session = dbinit()
+    form = SignupForm()
+
+    if request.method == 'POST':
+        if form.validate() == False:
+            return render_template('fl_signup.html', form=form)
+        else:
+            newuser = User(form.firstname.data, form.lastname.data, form.email.data, form.password.data)
+            db_login.session.add(newuser)
+            db_login.session.commit()
+
+            session['email'] = newuser.email
+
+            ##return "[1] Create a new user [2] sign in the user [3] redirect to the user's profile"
+            return redirect(url_for('profile'))
+
+    elif request.method == 'GET':
+        return render_template('fl_signup.html', form=form)
+
+@app.route('/home')
+def home():
+    return render_template('fl_profile.html')
+
+@app.route('/about')
+def about():
+    return render_template('fl_profile.html')
+
+@app.route('/contact')
+def contact():
+    return render_template('fl_profile.html')
+
+@app.route('/profile')
+def profile():
+  if 'email' not in session:
+    return redirect(url_for('signin'))
+ 
+  user = User.query.filter_by(email = session['email']).first()
+ 
+  if user is None:
+    return redirect(url_for('signin'))
+  else:
+    return render_template('fl_profile.html')
+
+@app.route('/signin', methods=['GET', 'POST'])
+def signin():
+  form = SigninForm()
+  if request.method == 'POST':
+    if form.validate() == False:
+      return render_template('fl_signin.html', form=form)
+    else:
+      session['email'] = form.email.data
+      return redirect(url_for('profile'))
+  elif request.method == 'GET':
+    return render_template('fl_signin.html', form=form)
+
+@app.route('/signout')
+def signout():
+  if 'email' not in session:
+    return redirect(url_for('signin'))
+
+  session.pop('email', None)
+  return redirect(url_for('home'))
+
 # FIXME: This is never called (since we run runserver.py)
 # Remove once confirmed to be deleted
 if __name__ == "__main__":
