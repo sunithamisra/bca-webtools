@@ -36,6 +36,9 @@ sudo apt-get install -y postgresql-server-dev-9.3
 sudo pip install -U psycopg2
 sudo pip install Flask-SQLAlchemy
 
+#SSS:
+sudo pip install flask-wtf
+
 # libtalloc
 sudo apt-get install -y libtalloc2
 sudo apt-get install -y libtalloc-dev
