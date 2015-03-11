@@ -54,11 +54,19 @@
             {% else %}
                 {% set column1 = 'r' %}
             {% endif %}
-            {% set fileinfo_html = partition_num ~'/'~ item.name %}
+
+            {% if ' ' in item.name %}
+              {% set itemname = item.name.replace(' ', "_") %}
+            {% else %}
+              {% set itemname = item.name %}
+            {% endif %}
+
+
+            {% set fileinfo_html = partition_num ~'/'~ itemname~'-'~item.inode %}
             <p style="font-size:9">
             <tr>
               <td>{{ column1 }}</td>
-              <td> <a href={{ fileinfo_html }}>{{ item.name }}</a>  </td>
+              <td> <a href={{ fileinfo_html }}>{{ itemname }}</a>  </td>
               <td>{{ item.size }}</td>
               <td>{{ item.mtime }}</td>
               <td>{{ item.deleted }}</td>
