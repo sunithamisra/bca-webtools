@@ -102,7 +102,7 @@ class bcaw:
         return file_list_root, fs
         
 
-    bcawFileInfo = ['name', 'size', 'mode', 'inode', 'p_inode', 'mtime', 'atime', 'ctime', 'isdir', 'deleted']
+    bcawFileInfo = ['name', 'size', 'mode', 'inode', 'p_inode', 'mtime', 'atime', 'ctime', 'isdir', 'deleted', 'name_slug']
 
 
     def bcawListFiles(self, fs, path, image_index, partition_num):
@@ -135,6 +135,16 @@ class bcaw:
                 else:
                     deleted = "No"
 
+                # NOTE: A new item "name_slug" is added to those file names which
+                # have a space. The space is replaced by %20 and saved as name_slug.
+                # This is used later when a file with a "non-None" name_slug shows
+                # up at the route. It is recognized as a filename with spaces and
+                # using the inode comparison, its real name is extracted before
+                # downloading the file.
+                name_slug = "None"
+                if " " in f.info.name.name:
+                    name_slug = f.info.name.name.replace(" ", "%20")
+
                 file_list.append({self.bcawFileInfo[0]:f.info.name.name, \
                               self.bcawFileInfo[1]:f.info.meta.size, \
                               self.bcawFileInfo[2]:f.info.meta.mode, \
@@ -144,7 +154,8 @@ class bcaw:
                               self.bcawFileInfo[6]:f.info.meta.atime, \
                               self.bcawFileInfo[7]:f.info.meta.ctime, \
                               self.bcawFileInfo[8]:is_dir, \
-                              self.bcawFileInfo[9]:deleted })
+                              self.bcawFileInfo[9]:deleted, \
+                              self.bcawFileInfo[10]:name_slug })
 
         ##print("Func:bcawListFiles: Listing Directory for PATH: ", path)
         ##print file_list
