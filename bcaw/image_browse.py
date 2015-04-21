@@ -13,7 +13,7 @@
 #
 
 from flask import Flask, render_template, url_for, Response, stream_with_context, request, flash, session, redirect
-from bcaw_forms import ContactForm, SignupForm, SigninForm
+from bcaw_forms import ContactForm, SignupForm, SigninForm, QueryForm
 
 import pytsk3
 import os, sys, string, time, re
@@ -25,26 +25,33 @@ from bcaw import app
 import bcaw_db
 from sqlalchemy import *
 from bcaw_userlogin_db import db_login, User, dbinit
+###from runserver import db_login
 from werkzeug.routing import BaseConverter
 '''
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relation, sessionmaker
 '''
+'''
+# searchable is commented outfor now
+import sqlalchemy as sa
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy_searchable import make_searchable
+from sqlalchemy_utils.types import TSVectorType
+from sqlalchemy.orm import relation, sessionmaker
+
+from sqlalchemy_searchable import search
+
+
+Base = declarative_base()
+
+make_searchable()
+'''
+
 image_list = []
 file_list_root = []
 checked_list_dict = dict()
 
-#FIXME: The following line should be called in __init__.py once.
-# Since that is not being recognized here, app.config.from_object is
-# added here. This needs to be fixed.
-app.config.from_object('bcaw_default_settings')
-image_dir = app.config['IMAGEDIR']
-num_images = 0
-image_db = []
-
-@app.route("/")
-
-def bcawBrowseImages():
+def bcawBrowse(db_init = True):
     global image_dir
     image_index = 0
 
@@ -57,7 +64,8 @@ def bcawBrowseImages():
     # Create the DB. FIXME: This needs to be called from runserver.py 
     # before calling run. That seems to have some issues. So calling from
     # here for now. Need to fix it.
-    session1 = bcaw_db.bcawdb()
+    if db_init == True:
+        session1 = bcaw_db.bcawdb()
 
     for img in os.listdir(image_dir):
         if img.endswith(".E01") or img.endswith(".AFF"):
@@ -86,7 +94,66 @@ def bcawBrowseImages():
       user = session['email']
       signup_out = "Sign Out"
 
-    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db=image_db, user=user, signup_out = signup_out)
+    qform = QueryForm()
+
+    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db=image_db, user=user, signup_out = signup_out, form=qform)
+
+#FIXME: The following line should be called in __init__.py once.
+# Since that is not being recognized here, app.config.from_object is
+# added here. This needs to be fixed.
+app.config.from_object('bcaw_default_settings')
+image_dir = app.config['IMAGEDIR']
+num_images = 0
+image_db = []
+
+@app.route("/")
+
+def bcawBrowseImages(db_init=True):
+    global image_dir
+    image_index = 0
+
+    # Since image_list is declared globally, empty it before populating
+    global image_list
+    del image_list[:]
+    global image_db
+    del image_db [:]
+
+    # Create the DB. FIXME: This needs to be called from runserver.py 
+    # before calling run. That seems to have some issues. So calling from
+    # here for now. Need to fix it.
+    if db_init == True:
+        session1 = bcaw_db.bcawdb()
+
+    for img in os.listdir(image_dir):
+        if img.endswith(".E01") or img.endswith(".AFF"):
+            ## print img
+            global image_list
+            image_list.append(img)
+
+            dm = bcaw()
+            image_path = image_dir+'/'+img
+            dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
+            idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
+            image_db.append(idb)
+            ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
+            image_index +=1
+        else:
+            continue
+  
+    # Render the template for main page.
+    # print 'D: Image_list: ', image_list
+    global num_images
+    num_images = len(image_list)
+
+    user = "Sign In"
+    signup_out = "Sign Up"
+    if 'email' in session:
+      user = session['email']
+      signup_out = "Sign Out"
+
+    qform = QueryForm()
+
+    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db=image_db, user=user, signup_out = signup_out, form=qform)
 
 def bcawGetImageIndex(image, is_path):
     global image_list
@@ -309,6 +376,7 @@ def file_clicked(image_name, image_partition, filepath):
             # print "Length OF TOTAL DATA: ", len(total_data)
            
 
+        ###file_new = "'" + real_file_name + "'"
         mime = MimeTypes()
         mime_type, a = mime.guess_type(file_name)
         generator = (cell for row in total_data
@@ -361,7 +429,53 @@ def signup():
 
 @app.route('/home')
 def home():
-    return render_template('fl_profile.html')
+    #return render_template('fl_profile.html')
+    # NOTE: There is code duplication here. Merge the folowing with bcawBrowse
+    # and call from both places (root and /home)
+    ####return(bcawBrowse(db_init=False))
+
+    global image_dir
+    image_index = 0
+
+    # Since image_list is declared globally, empty it before populating
+    global image_list
+    del image_list[:]
+    global image_db
+    del image_db [:]
+
+    # Create the DB. FIXME: This needs to be called from runserver.py 
+    # before calling run. That seems to have some issues. So calling from
+    # here for now. Need to fix it.
+    for img in os.listdir(image_dir):
+        if img.endswith(".E01") or img.endswith(".AFF"):
+            ## print img
+            global image_list
+            image_list.append(img)
+
+            dm = bcaw()
+            image_path = image_dir+'/'+img
+            dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
+            idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
+            image_db.append(idb)
+            ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
+            image_index +=1
+        else:
+            continue
+  
+    # Render the template for main page.
+    # print 'D: Image_list: ', image_list
+    global num_images
+    num_images = len(image_list)
+
+    user = "Sign In"
+    signup_out = "Sign Up"
+    if 'email' in session:
+      user = session['email']
+      signup_out = "Sign Out"
+
+    qform = QueryForm()
+
+    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db=image_db, user=user, signup_out = signup_out, form=qform)
 
 @app.route('/about')
 def about():
@@ -441,6 +555,99 @@ def signout():
 
   session.pop('email', None)
   return redirect(url_for('home'))
+'''
+def bcaw_query(db, phrase):
+    query = db.session.query()
+    query = search(query, phrase)
+
+    print("D: ", query.first().name)
+'''
+
+@app.route('/query', methods=['GET', 'POST'])
+def query():
+    form = QueryForm()
+    if request.method == 'POST':
+        search_result_file_list = []
+        search_result_image_list = []
+        searched_phrase = form.search_text.data.lower()
+        
+        search_result_list = form.searchDfxmlDb()
+        if search_result_list == None:
+            print "No search results for ", searched_phrase
+            num_results = 0
+        else:
+            i = 0
+            # Note; For now, two separae lists are maintained - one for filename
+            # and another for the corresponding image. If we need more than two
+            # columns to display then it makes sense to have an array if structues
+            # instead of 2 separate lists.
+            for list_item in search_result_list:
+                #search_result_file_list[i] = list_item.fo_filename
+                search_result_file_list.append(list_item.fo_filename)
+                search_result_image_list.append(list_item.image_name)
+                print("search_result_file_list[{}] = {}, img: {} ".format(i, search_result_file_list[i], list_item.image_name))
+                i += 1
+            print "D: query:Result:len: {}, file: {} ".format(len(search_result_list), search_result_list[0].fo_filename)
+
+            num_results = len(search_result_list)
+
+        if search_result_list == None:
+            print "Query: searchDfxmlDb FAILED "
+        else:
+            print "Searched for ", searched_phrase
+
+        user = "Sign In"
+        signup_out = "Sign Up"
+        if 'email' in session:
+          user = session['email']
+          signup_out = "Sign Out"
+
+
+        print (">> Rendering template with URL:  ")
+        return render_template('fl_search_results.html',
+                                searched_phrase=searched_phrase,
+                                num_results=num_results,
+                                search_result_file_list=search_result_file_list,
+                                search_result_image_list=search_result_image_list,
+                                user=user, signup_out = signup_out, form=form)
+                                                    
+            
+    elif request.method == 'GET':
+        return render_template('fl_query.html', form=form)
+        
+
+    ##query = bcaw_query(BcawDfxmlInfo, phrase) 
+    #engine = create_engine('postgresql://vagrant:vagrant@localhost/bca_db')
+
+    '''
+    engine = create_engine('postgresql://vagrant:vagrant@localhost/bca_db')
+
+    #Base.metadata.create_all(engine)
+    db_login.Model.metadata.create_all(engine)
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    query1 = session.query(bcaw_db.BcawDfxmlInfo)
+
+    print("QUERY PASSED ")
+    #print(query1)
+
+    ####query = search(query1, 'astronaut.jpg', vector=bcaw_db.BcawDfxmlInfo.fo_filename)
+    query = search(query1, 'astronaut.jpg', vector=bcaw_db.BcawDfxmlInfo.fo_filename)
+
+    print("query: ", query)
+
+
+    print query.first()
+
+    ####query = db_login.session.query()
+    ####query = search(query, 'Email')
+
+    #print("query.first.fo_filename : ", query.first().fo_filename)
+    return render_template("fl_profile.html")
+    '''
+
 
 # FIXME: This is never called (since we run runserver.py)
 # Remove once confirmed to be deleted
