@@ -16,6 +16,7 @@
 from flask.ext.wtf import Form 
 from wtforms import TextField, TextAreaField, SubmitField, validators, ValidationError, PasswordField
 from bcaw_userlogin_db import User, db_login
+import bcaw_db
  
 class ContactForm(Form):
   name = TextField("Name")
@@ -64,3 +65,36 @@ class SigninForm(Form):
     else:
       self.email.errors.append("Invalid e-mail or password")
       return False
+
+class QueryForm(Form):
+    #search_text = TextField("Search", [validators.Required("Please enter the search phrase"), validators.DataRequired("Please enter the search phrase") )
+    search_text = TextField("Search" )
+    submit = SubmitField("Search")
+    search_result = []
+    q1 = []
+    q2 = []
+
+    print "D: Search_text: ", search_text
+    def __init__(self, *args, **kwargs):
+        Form.__init__(self, *args, **kwargs)
+
+    def searchDfxmlDb(self):
+        print "D: Search_text: ", self.search_text.data.lower()
+        if not Form.validate(self):
+            print("D: bcaw_forms: Validate failed. returning ");
+            return None
+
+        search_text_query = '%' + self.search_text.data.lower() + '%'
+        print "search_text_query = ", search_text_query
+
+        q1 = bcaw_db.BcawDfxmlInfo.query.filter(bcaw_db.BcawDfxmlInfo.fo_filename.ilike(search_text_query))
+        print("Query: ", q1.limit(5).all())
+
+        q2 = q1.all()
+        if len(q2) == 0:
+            print "Query: Not found: ", self.search_text.data.lower()
+            return None
+        last_elem = len(q2) - 1
+        print "D: Length-1: ", last_elem
+        return q2
+        
