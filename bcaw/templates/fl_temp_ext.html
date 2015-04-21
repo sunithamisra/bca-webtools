@@ -24,12 +24,33 @@
             font-family: sans-serif;
             font-size:14px;
         }
+        form {
+            position: absolute;
+            top: 15px;
+            right: 350px;
+        }
 
     </style>
 {% endblock %}
 {% block content %}
     <img src="{{ url_for('static', filename ='dheader.png') }}" height="80" width="760" align="center" >
     <h3 align="left">bca-webtools</h3>
+
+    <p> 
+      <form action="{{ url_for('query') }}" method=post>
+        {{ form.hidden_tag() }}
+         
+        {{ form.search_text.label }}
+        {{ form.search_text }}
+         
+        {{ form.submit }}
+      </form>
+    </p>
+    <p style=' position:absolute; top:5px; right:800px; color:#eeeeee; font-wright:bold'>
+       <!--<td><a href="/home">home</a></td>> -->
+       <td><a href="{{ url_for('home') }}">Home</a></td>
+    </p>
+
     {#<BR>&nbsp;<BR>#} 
     <BR>&nbsp;<BR> 
     <p class="important">
@@ -39,9 +60,12 @@
         <p style="position:absolute; top:5px; Right:50px; color:#eeeeee;">
           <!<p style="position:absolute; top:5px; Left-50px;color:#eeeeee;">
           <tr>
+            <!<p style=' position:absolute; top:5px; right:150px; color:#eeeeee; font-wright:bold'>
+
             <p style=' position:absolute; top:5px; right:150px; color:#eeeeee; font-wright:bold'>
               <!-- <td><a href=signin>Sign In</a></td>-->
               <td><a href=signin>{{ user }}</a></td>
+            </p>
             <p style='position:absolute; top:5px; right:50px; color:#eeeeee; font-wright:normal'>
             <!--<td><a href=signup>Sign Up</a></td>-->
             {% if signup_out in "Sign Up" %}
@@ -49,6 +73,7 @@
             {% elif signup_out in "Sign Out" %}
               <td><a href=signout>Sign Out</a></td>
             {% endif %}
+            </p>
             
           </tr>
           </p>
