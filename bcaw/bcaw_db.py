@@ -17,12 +17,31 @@ from flask import Flask, render_template, url_for, Response
 from flask.ext.sqlalchemy import SQLAlchemy
 from bcaw_default_settings import *
 from bcaw_userlogin_db import db_login
+###from runserver import db_login
+
 
 app = Flask(__name__)
 
 import os
 import bcaw_utils
 import xml.etree.ElementTree as ET
+
+##########
+'''
+import sqlalchemy as sa
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy_searchable import make_searchable
+from sqlalchemy_utils.types import TSVectorType
+
+from sqlalchemy_searchable import search
+
+
+Base = declarative_base()
+
+make_searchable()
+'''
+
+##########
 
 # FIXME: The following two lines for configuration are supposed to be
 # in __init__.py. But somehow they are not getting picked up here. So
@@ -239,6 +258,7 @@ class BcawDfxmlInfo(db_login.Model):
     fo_uid = db_login.Column(db_login.BigInteger)
     fo_gid = db_login.Column(db_login.Integer)
     fo_mtime = db_login.Column(db_login.String(100))
+    ####search_vector = db_login.Column(TSVectorType('image_name', 'fo_filename'))
 
     def __init__(self, image_name = None, partition_offset = None,
 sector_size = None, block_size = None, ftype = None, ftype_str = None,
@@ -316,9 +336,14 @@ def bcawDfxmlDbSessionAdd(d_dbrec):
 
     
 def dbinit(): 
-   print(">>> Creating tables ")
-   #db_login.drop_all() ## FIXME: TEMP
-   db_login.create_all()
+    #db_login.init_app(app)
+    db_login.create_all()
+    '''
+    with app.app_context():
+        print(">>> Creating tables ")
+        #db_login.drop_all() ## FIXME: TEMP
+        db_login.create_all()
+    '''
 
 def bcawdb():
     dbinit()
@@ -345,4 +370,16 @@ if __name__=="__main__":
     dbBrowseImages()
     app.run(debug=True, host="0.0.0.0", port=8888)
 '''
+'''
     
+def bcaw_query(db, phrase):
+    query = db.session.query()
+    query = search(query, phrase)
+
+    print("Query:name ", query.first().name)
+
+@app.route('/query')
+def query_dfxml(phrase):
+    query = bcaw_query(BcawDfxmlInfo, phrase) 
+    return render_template("fl_profile.html")
+'''
