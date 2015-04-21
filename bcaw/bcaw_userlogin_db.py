@@ -16,10 +16,12 @@ from flask import Flask, render_template, url_for, Response
 from flask.ext.sqlalchemy import SQLAlchemy
 from werkzeug import generate_password_hash, check_password_hash
 
+
 #app = Flask(__name__)
 #db_login = SQLAlchemy(app)
  
 db_login = SQLAlchemy()
+###from runserver import db_login
  
 class User(db_login.Model):
   __tablename__ = 'users'
