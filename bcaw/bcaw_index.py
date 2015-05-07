@@ -42,6 +42,8 @@ class IndexFiles(object):
             os.mkdir(store_dir)
 
         # NOTE: Hardcoded the analyzer instead of passing it
+        vm_env = lucene.getVMEnv()
+        vm_env.attachCurrentThread()
         analyzer = StandardAnalyzer(Version.LUCENE_CURRENT)
         store = SimpleFSDirectory(File(store_dir))
         analyzer = LimitTokenCountAnalyzer(analyzer, 1048576)
@@ -50,13 +52,7 @@ class IndexFiles(object):
         writer = IndexWriter(store, config)
 
         self.indexDocs(root, writer)
-        ticker = Ticker()
-        print 'commit index',
-        threading.Thread(target=ticker.run).start()
-        writer.commit()
         writer.close()
-        ticker.tick = False
-        print 'done'
 
     def indexDocs(self, root, writer):
 
