@@ -20,9 +20,11 @@ import os, sys, string, time, re
 from mimetypes import MimeTypes
 from datetime import date
 from bcaw_utils import bcaw
+import lucene
 
 from bcaw import app
 import bcaw_db
+import bcaw_index
 from sqlalchemy import *
 from bcaw_userlogin_db import db_login, User, dbinit
 ###from runserver import db_login
@@ -51,15 +53,24 @@ image_list = []
 file_list_root = []
 checked_list_dict = dict()
 
+'''
+NOTE: This function is a copy of bcawBroseImages, but with some changes (like
+not initializing DB). Due to some issue with calling this routine from home(), 
+and other route routines, the same code is inlined in those routines for now.
+It needs to be changed by calling this routine instead.  
+
 def bcawBrowse(db_init = True):
     global image_dir
     image_index = 0
 
-    # Since image_list is declared globally, empty it before populating
+    # Two lists are maintained: image_list: List of image names, 
+    # image_db_list: List of the db_elements of all images. Each element is
+    # a db-structure.
+    # Since lists are declared globally, empty them before populating
     global image_list
     del image_list[:]
-    global image_db
-    del image_db [:]
+    global image_db_list
+    del image_db_list [:]
 
     # Create the DB. FIXME: This needs to be called from runserver.py 
     # before calling run. That seems to have some issues. So calling from
@@ -77,7 +88,7 @@ def bcawBrowse(db_init = True):
             image_path = image_dir+'/'+img
             dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
             idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
-            image_db.append(idb)
+            image_db_list.append(idb)
             ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
             image_index +=1
         else:
@@ -96,15 +107,19 @@ def bcawBrowse(db_init = True):
 
     qform = QueryForm()
 
-    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db=image_db, user=user, signup_out = signup_out, form=qform)
+    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db_list=image_db_list, user=user, signup_out = signup_out, form=qform)
+
+'''
 
 #FIXME: The following line should be called in __init__.py once.
 # Since that is not being recognized here, app.config.from_object is
 # added here. This needs to be fixed.
 app.config.from_object('bcaw_default_settings')
 image_dir = app.config['IMAGEDIR']
+dirFilesToIndex = app.config['FILES_TO_INDEX_DIR']
+indexDir = app.config['INDEX_DIR']
 num_images = 0
-image_db = []
+image_db_list = []
 
 @app.route("/")
 
@@ -112,11 +127,14 @@ def bcawBrowseImages(db_init=True):
     global image_dir
     image_index = 0
 
+    # Two lists are maintained: image_list: List of image names, 
+    # image_db_list: List of the db_elements of all images. Each element is
+    # a db-structure.
     # Since image_list is declared globally, empty it before populating
     global image_list
     del image_list[:]
-    global image_db
-    del image_db [:]
+    global image_db_list
+    del image_db_list [:]
 
     # Create the DB. FIXME: This needs to be called from runserver.py 
     # before calling run. That seems to have some issues. So calling from
@@ -134,11 +152,45 @@ def bcawBrowseImages(db_init=True):
             image_path = image_dir+'/'+img
             dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
             idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
-            image_db.append(idb)
+            image_db_list.append(idb)
             ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
+
+            # Now download the files in the image to build the indexes.
+            # FIXME: For now, I am downloading all the text files. Going forward,
+            # each file is indexed and once the index is appended to the existing
+            # index list, is deleted. This way we don't have to make space for all the
+            # files in all the images
+            temp_root_dir = "/vagrant"
+            for p in range(0, dm.num_partitions):
+                # make the directory for this img and partition
+                part_dir = str(temp_root_dir) + '/img'+str(image_index)+"_"+ str(p)
+                ## print("Part Dir: ", part_dir)
+                #os.makedir(part_dir)
+                file_list_root, fs = dm.bcawGenFileList(image_path, image_index,
+                                             int(p), '/')
+                print("Calling bcawDnldRepo with root ", file_list_root)
+                # NOTE: The following is under construction. Hence commented out.
+                ####bcawDnldRepo(file_list_root, part_dir, image_index, p, image_path, '/')
+            '''
+                for item in file_list_root:
+                    if item['isdir'] == True:
+                        print("It is a DIR", item['name'])
+                    else:
+                        print("It is a FILE", item['name'])
+            '''
+
             image_index +=1
         else:
             continue
+
+    # Build lucene index for the files stored in
+
+    print("Building Lucene Indexes for root {} dest :{}".format(dirFilesToIndex, indexDir))
+
+    ##lucene.initVM(vmargs=['-Djava.awt.headless=true'])
+    print 'lucene', lucene.VERSION
+
+    bcaw_index.IndexFiles(dirFilesToIndex, indexDir)
   
     # Render the template for main page.
     # print 'D: Image_list: ', image_list
@@ -153,7 +205,37 @@ def bcawBrowseImages(db_init=True):
 
     qform = QueryForm()
 
-    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db=image_db, user=user, signup_out = signup_out, form=qform)
+    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db_list=image_db_list, user=user, signup_out = signup_out, form=qform)
+
+
+def bcawDnldRepo(root_dir_list, root_dir_path, image_index, partnum, image_path, root_path):
+    # NOTE:
+    # This routine is used to download the contents of the image which are text based,
+    # in order to use for indexing for search utility. It is still under construction
+    # since we need to figure out a way where we can download one file at a time,
+    # build its index, append to the existing index and delete the file before
+    # downloading another.
+        print("Root dir list: ",root_path, len(root_dir_list),   root_dir_list)
+        num_elements = len(root_dir_list)
+        dm = bcaw()
+        #root_path = '/'
+        new_path = root_path
+        for item in root_dir_list:
+            if item['isdir'] == True:
+                print("It is a Directory", item['name'])
+                if item['name'] == '.' or item['name'] == '..':
+                    continue
+                new_path = new_path + '/'+ str(item['name'])
+
+                # Call the function recursively
+                item_root_dir = root_dir_path + '/' + str(item['name'])
+
+                #new_path = root_path + '/' + str(item['name'])
+                print("Calling func recursively with root - Newpath: ", item['name'], item, new_path)
+                new_filelist_root, fs = dm.bcawGenFileList(image_path, image_index, partnum, new_path)
+                bcawDnldRepo(new_filelist_root, item_root_dir, image_index, partnum, image_path, new_path)
+            else:
+                print("It is a File", item['name'])
 
 def bcawGetImageIndex(image, is_path):
     global image_list
@@ -200,7 +282,7 @@ def image_psql(image_name):
     '''
     return render_template("db_image_template.html", 
                            image_name = image_name,
-                           image=image_db[image_index])
+                           image=image_db_list[image_index])
 
 #
 # Template rendering for Directory Listing per partition
@@ -440,8 +522,8 @@ def home():
     # Since image_list is declared globally, empty it before populating
     global image_list
     del image_list[:]
-    global image_db
-    del image_db [:]
+    global image_db_list
+    del image_db_list [:]
 
     # Create the DB. FIXME: This needs to be called from runserver.py 
     # before calling run. That seems to have some issues. So calling from
@@ -456,7 +538,7 @@ def home():
             image_path = image_dir+'/'+img
             dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
             idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
-            image_db.append(idb)
+            image_db_list.append(idb)
             ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
             image_index +=1
         else:
@@ -475,7 +557,7 @@ def home():
 
     qform = QueryForm()
 
-    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db=image_db, user=user, signup_out = signup_out, form=qform)
+    return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db_list=image_db_list, user=user, signup_out = signup_out, form=qform)
 
 @app.route('/about')
 def about():
@@ -570,29 +652,39 @@ def query():
         search_result_file_list = []
         search_result_image_list = []
         searched_phrase = form.search_text.data.lower()
-        
-        search_result_list = form.searchDfxmlDb()
-        if search_result_list == None:
-            print "No search results for ", searched_phrase
-            num_results = 0
-        else:
-            i = 0
-            # Note; For now, two separae lists are maintained - one for filename
-            # and another for the corresponding image. If we need more than two
-            # columns to display then it makes sense to have an array if structues
-            # instead of 2 separate lists.
-            for list_item in search_result_list:
-                #search_result_file_list[i] = list_item.fo_filename
-                search_result_file_list.append(list_item.fo_filename)
-                search_result_image_list.append(list_item.image_name)
-                print("search_result_file_list[{}] = {}, img: {} ".format(i, search_result_file_list[i], list_item.image_name))
-                i += 1
-            print "D: query:Result:len: {}, file: {} ".format(len(search_result_list), search_result_list[0].fo_filename)
 
-            num_results = len(search_result_list)
+        search_result_list, search_type = form.searchDfxmlDb()
+        if search_type == "filename":
+            if search_result_list == None:
+                print "No search results for ", searched_phrase
+                num_results = 0
+            else:
+                i = 0
+                # Note; For now, two separae lists are maintained - one for filename
+                # and another for the corresponding image. If we need more than two
+                # columns to display then it makes sense to have an array if structues
+                # instead of 2 separate lists.
+                for list_item in search_result_list:
+                    #search_result_file_list[i] = list_item.fo_filename
+                    search_result_file_list.append(list_item.fo_filename)
+                    search_result_image_list.append(list_item.image_name)
+                    ## print("search_result_file_list[{}] = {}, img: {} ".format(i, search_result_file_list[i], list_item.image_name))
+                    i += 1
+                print "D: query:Result:len: {}, file: {} ".format(len(search_result_list), search_result_list[0].fo_filename)
+
+                num_results = len(search_result_list)
+        else: # search type is "Contents"
+            if search_result_list == None:
+                print "No search results for ", searched_phrase
+                num_results = 0
+            else:
+                print "search result list: ", search_result_list
+                num_results = len(search_result_list)
+                search_result_file_list = search_result_list
 
         if search_result_list == None:
             print "Query: searchDfxmlDb FAILED "
+            num_results = 0
         else:
             print "Searched for ", searched_phrase
 
@@ -601,7 +693,6 @@ def query():
         if 'email' in session:
           user = session['email']
           signup_out = "Sign Out"
-
 
         print (">> Rendering template with URL:  ")
         return render_template('fl_search_results.html',
@@ -647,7 +738,6 @@ def query():
     #print("query.first.fo_filename : ", query.first().fo_filename)
     return render_template("fl_profile.html")
     '''
-
 
 # FIXME: This is never called (since we run runserver.py)
 # Remove once confirmed to be deleted
