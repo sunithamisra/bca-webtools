@@ -11,6 +11,10 @@
 #
 # Utilities for the BitCurator Access Webtools application
 
+# For is_text routine
+from __future__ import division
+import string 
+
 import pytsk3
 import os, sys, string, time, re
 import subprocess
@@ -241,3 +245,25 @@ class bcaw:
         dfxmlfile = self.fixup_dfxmlfile_temp(dfxmlfile)
         
         return dfxmlfile
+
+# Routine to detect text files: Got from 
+# http://stackoverflow.com/questions/1446549/how-to-identify-binary-and-text-files-using-python
+
+def istext(filename):
+    s=open(filename).read(512)
+    text_characters = "".join(map(chr, range(32, 127)) + list("\n\r\t\b"))
+    _null_trans = string.maketrans("", "")
+    if not s:
+        # Empty files are considered text
+        return True
+    if "\0" in s:
+        # Files with null bytes are likely binary
+        return False
+    # Get the non-text characters (maps a character to itself then
+    # use the 'remove' option to get rid of the text characters.)
+    t = s.translate(_null_trans, text_characters)
+    # If more than 30% non-text characters, then
+    # this is considered a binary file
+    if float(len(t))/float(len(s)) > 0.30:
+        return False
+    return True
