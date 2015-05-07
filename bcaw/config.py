@@ -18,3 +18,5 @@
 IMAGEDIR = "/vagrant/disk-images"
 #SQLALCHEMY_DATABASE_URI = "postgresql://bcadmin:bcadmin@localhost/bcdb"
 SQLALCHEMY_DATABASE_URI = "postgresql://vagrant:vagrant@localhost/bca_db"
+INDEX_DIR = "/vagrant/lucene_index"
+FILES_TO_INDEX_DIR = "/vagrant/files_to_index"
