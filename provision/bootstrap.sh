@@ -46,12 +46,66 @@ sudo apt-get install -y libtalloc-dev
 # Check postgress setup
 check_install postgresql postgresql
 
+# .pgpass contains the password for user vagrant. This needs to be
+# in the home directory.
+sudo cp /vagrant/.pgpass /home/vagrant/.pgpass
+
 # Start postgress and setup up postgress user
 sudo service postgresql start
-sudo -u postgres psql -c"ALTER user postgres WITH PASSWORD 'bcadmin'"
-sudo -u postgres psql -c"CREATE user bcadmin WITH PASSWORD 'bcadmin'"
-sudo -u postgres createdb -O bcadmin bcdb
+
+# Create the database bca_db with owner vagrant
+# First create user "vagrant":
+sudo -u postgres psql -c"CREATE user vagrant WITH PASSWORD 'vagrant'"
+
+# Now create the database
+sudo -u postgres createdb -O vagrant bca_db
+
 sudo service postgresql restart
+
+## Instal java jdk:  (Installs in  /usr/lib/jvm/java-6-openjdk)
+sudo apt-get install -y openjdk-7-jdk
+sudo apt-get install -y openjdk-7-jre-headless
+sudo apt-get install -y openjdk-7-jre-lib
+
+### Install ant: (installs in /usr/bin/ant)
+
+sudo apt-get install -y ant
+sudo apt-get install -y ant-doc
+sudo apt-get install -y ant-optional
+
+## Install ivy
+
+sudo apt-get install -y ivy
+sudo apt-get install -y ivy-doc
+
+cd /tmp
+
+#  Install pylucene. It also installs JCC
+sudo wget http://www.trieuvan.com/apache/lucene/pylucene/pylucene-4.9.0-0-src.tar.gz
+
+tar xzf pylucene-4.9.0-0-src.tar.gz  
+
+cd pylucene-4.9.0-0
+
+pushd jcc
+
+python setup.py build
+python setup.py install
+
+popd # puts us back on pylucene directory
+
+# Here we have to edit the Makefile to uncomment the config info for Linux.
+# First we look for the requred string in the makefile and copy the 5 lines
+# strting from the 4th line after the pattern match, into a temp file (temp),
+# after removing the leading hash (to uncomment the lines).
+# Then we append these lines from temp file to Makefile after the given pattern
+# is found.
+
+grep -A 8 "Ubuntu 11.10 64-bit" Makefile | sed -n '4,8p' | sed 's/^#//' > temp
+sed -i -e '/Ubuntu 11.10 64-bit/r temp' Makefile
+
+make
+sudo make install
 
 # Install libewf 
 cd /tmp
