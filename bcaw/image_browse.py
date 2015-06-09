@@ -168,7 +168,7 @@ def bcawBrowseImages(db_init=True):
                 #os.makedir(part_dir)
                 file_list_root, fs = dm.bcawGenFileList(image_path, image_index,
                                              int(p), '/')
-                print("Calling bcawDnldRepo with root ", file_list_root)
+                ## print("D: Calling bcawDnldRepo with root ", file_list_root)
                 # NOTE: The following is under construction. Hence commented out.
                 ####bcawDnldRepo(file_list_root, part_dir, image_index, p, image_path, '/')
             '''
@@ -190,7 +190,10 @@ def bcawBrowseImages(db_init=True):
     ##lucene.initVM(vmargs=['-Djava.awt.headless=true'])
     print 'lucene', lucene.VERSION
 
-    bcaw_index.IndexFiles(dirFilesToIndex, indexDir)
+    if os.path.exists(dirFilesToIndex) :
+        print("Calling Index fn")
+        bcaw_index.IndexFiles(dirFilesToIndex, indexDir)
+   
   
     # Render the template for main page.
     # print 'D: Image_list: ', image_list
