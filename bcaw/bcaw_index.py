@@ -42,8 +42,11 @@ class IndexFiles(object):
             os.mkdir(store_dir)
 
         # NOTE: Hardcoded the analyzer instead of passing it
+        lucene.initVM()
+        '''
         vm_env = lucene.getVMEnv()
         vm_env.attachCurrentThread()
+        '''
         analyzer = StandardAnalyzer(Version.LUCENE_CURRENT)
         store = SimpleFSDirectory(File(store_dir))
         analyzer = LimitTokenCountAnalyzer(analyzer, 1048576)
@@ -70,7 +73,7 @@ class IndexFiles(object):
 
         for root, dirnames, filenames in os.walk(root):
             for filename in filenames:
-                if not filename.endswith('.txt'):
+                if not (filename.endswith('.txt') or filename.endswith('.pdf') or filename.endswith('.xml')):
                     continue
                 print "adding", filename
                 try:
