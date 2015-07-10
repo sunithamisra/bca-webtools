@@ -148,4 +148,14 @@ class QueryForm(Form):
             search_list = bcaw_index.searchIndexedFiles(searcher, analyzer, self.search_text.data.lower())
             return search_list, "contents"
             
-        
+class adminForm(Form):
+    radio_option = RadioField('Label', choices=[('Image_table', 'Build Image Table'), ('dfxml_table', 'Build DFXML Table'), ('all_tables', 'Build All Tables'), ('drop_img_table', 'Drop Image Table'), ('drop_dfxml_table', 'Drop DFXML Table'), ('drop_all_tables', 'Drop All Tables'), ('generate_index', 'Generate Index')], default='Image_table')
+    submit = SubmitField("Submit")
+ 
+    def __init__(self, *args, **kwargs):
+        Form.__init__(self, *args, **kwargs)
+
+    def adminAction(self):
+        if not Form.validate(self):
+            print(">> bcaw_forms: Validate failed. returning ");
+            return None, self.radio_option.data.lower()
