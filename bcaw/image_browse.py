@@ -13,7 +13,7 @@
 #
 
 from flask import Flask, render_template, url_for, Response, stream_with_context, request, flash, session, redirect
-from bcaw_forms import ContactForm, SignupForm, SigninForm, QueryForm
+from bcaw_forms import ContactForm, SignupForm, SigninForm, QueryForm, adminForm
 
 import pytsk3
 import os, sys, string, time, re
@@ -515,7 +515,7 @@ def signup():
 @app.route('/home')
 def home():
     #return render_template('fl_profile.html')
-    # NOTE: There is code duplication here. Merge the folowing with bcawBrowse
+    # FIXME: There is code duplication here. Merge the folowing with bcawBrowse
     # and call from both places (root and /home)
     ####return(bcawBrowse(db_init=False))
 
@@ -741,6 +741,74 @@ def query():
     #print("query.first.fo_filename : ", query.first().fo_filename)
     return render_template("fl_profile.html")
     '''
+
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+  form = adminForm()
+  if request.method == 'POST':
+    db_option = 3
+    db_option_msg = None
+    if (form.radio_option.data.lower() == 'all_tables'):
+        db_option = 1
+        db_option_msg = "Built All the Tables"
+
+        # Add Tables - either image table, or DFXML table or both - to the DB
+        # based on the arguments.
+        retval, db_option_msg = bcaw_db.dbBuildDb(bld_imgdb = True, bld_dfxmldb = True)
+    elif(form.radio_option.data.lower() == 'image_table'):
+        # First check if the particular image exists. If it does, don't build
+        # another entry for the same image.
+        # NOTE: db_option is not really used at this time. Just keeping it in
+        # case it could be of use in the future. Will be removed while cleaning up,
+        # if not used.
+        db_option = 2
+        retval, db_option_msg = bcaw_db.dbBuildDb(bld_imgdb = True, bld_dfxmldb = False)
+    elif (form.radio_option.data.lower() == 'dfxml_table'):
+        db_option = 3
+        retval, db_option_msg = bcaw_db.dbBuildDb(bld_imgdb = False, bld_dfxmldb = True)
+        if retval == 0:
+            db_option_msg = "Built DFXML Table"
+    elif (form.radio_option.data.lower() == 'drop_all_tables'):
+        db_option = 4
+        retval_img, message_img = bcaw_db.dbu_drop_table("bcaw_images")
+        retval_dfxml, message_dfxml = bcaw_db.dbu_drop_table("bcaw_dfxmlinfo")
+        if retval_img == 0 and retval_dfxml == 0:
+            db_option_msg = "Dropped all tables "
+        elif retval_img == -1 and retval_dfxml == -1:
+            db_option_msg = "Failed to drop all tables. Tables might not exist "
+        else:
+            db_option_msg = message_img
+    elif (form.radio_option.data.lower() == 'drop_img_table'):
+        db_option = 5
+        retval, db_option_msg = bcaw_db.dbu_drop_table("bcaw_images")
+    elif (form.radio_option.data.lower() == 'drop_dfxml_table'):
+        print "D: Reuested DFXML DB Drop "
+        db_option = 5
+        retval, db_option_msg = bcaw_db.dbu_drop_table("bcaw_dfxmlinfo")
+    elif (form.radio_option.data.lower() == 'generate_index'):
+        #FIXME: This is not supported yet.
+        db_option = 6
+        db_option_msg = "Option not yet supported"
+    return render_template('fl_admin_results.html',
+                           db_option=str(db_option),
+                           db_option_msg=str(db_option_msg),
+                           form=form)  # TEMP
+ 
+  elif request.method == 'GET':
+    return render_template('fl_admin.html', form=form)
+ 
+  if 'email' not in session:
+    return redirect(url_for('admin'))
+ 
+  user = User.query.filter_by(email = session['email']).first()
+ 
+'''
+  if user is None:
+    return redirect(url_for('signin'))
+  else:
+    # Check if user has the permission to do admin services
+    return render_template('fl_profile.html')   # FIXME: Placeholder
+'''    
 
 # FIXME: This is never called (since we run runserver.py)
 # Remove once confirmed to be deleted
