@@ -15,6 +15,9 @@
 from flask import Flask
 app = Flask(__name__)
 import bcaw.image_browse
+import admin
+
+# main_app = app
 
 # Config file:
 
@@ -47,3 +50,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://vagrant:vagrant@localhost/
 from bcaw_userlogin_db import db_login
 db_login.init_app(app)
 import bcaw.image_browse
+
+''' Under construction
+app.register_blueprint(admin.bp, url_prefix='/admin')
+'''
