@@ -17,6 +17,7 @@ from flask import Flask, render_template, url_for, Response
 from flask.ext.sqlalchemy import SQLAlchemy
 from bcaw_default_settings import *
 from bcaw_userlogin_db import db_login
+import psycopg2
 ###from runserver import db_login
 
 
@@ -55,7 +56,7 @@ image_list = []
 image_dir = app.config['IMAGEDIR']
 
 #
-# bcawGetXmlInfo: Extracts information from the dfxml file
+# bcawGetXmlInfo: Extracts information from the xml file
 #
 def bcawGetXmlInfo(xmlfile):
     result = ""
@@ -167,7 +168,7 @@ def dbBrowseImages():
             ## global image_list
             image_list.append(img)
 
-            # FIXME: Partition info will be added to the metadata info 
+            # FIXME: Partition info will be added to the metadata info
             # Till then the following three lines are not necessary.
             dm = bcaw_utils.bcaw()
             image_path = image_dir+'/'+img
@@ -186,7 +187,6 @@ def dbBrowseImages():
 
             # Read the XML file and populate the record for this image
             dbrec = bcawGetXmlInfo(xmlfile)
-            d_dbrec = bcawGetDfxmlInfo(dfxmlfile, img)
 
             ## print("D: Adding dbrec session to the DB: ", dbrec)
             dbrec['image_name'] = img
@@ -201,6 +201,81 @@ def dbBrowseImages():
     #db.session.commit()
   
     print 'D: Image_list: ', image_list
+
+def dbBuildDb(bld_imgdb = False, bld_dfxmldb = False):
+    """ Depending on the arguments set, this functioon generates the table
+        contents for the given table, for each image in the disa-images
+        directory.
+    """
+    global image_dir
+    image_index = 0
+
+    # Since image_list is declared globally, empty it before populating
+    ###global image_list
+    ###del image_list[:]
+    if bld_imgdb:
+        table_name = "bcaw_images"
+    if bld_dfxmldb:
+        table_name = "bcaw_dfxmlinfo"
+    if bld_imgdb == False and bld_dfxmldb == False:
+        return(-1, "No DB Specified");
+
+    table_added = 0
+    for img in os.listdir(image_dir):
+        if img.endswith(".E01") or img.endswith(".AFF"):
+            print "\nD: Generating table contents for Image: ", img
+            ###global image_list
+            ###image_list.append(img)
+
+            if dbu_does_image_exist(img, table_name):
+                print ">> Table already exists image " , img
+                continue
+            else:
+                print ">> Table for image {} does not exist: ".format(img)
+                table_added += 1
+
+            # FIXME: Partition info will be added to the metadata info
+            # Till then the following three lines are not necessary.
+            dm = bcaw_utils.bcaw()
+            image_path = image_dir+'/'+img
+            dm.num_partitions = dm.bcawGetNumPartsForImage(image_path, image_index)
+            xmlfile = dm.dbGetImageInfoXml(image_path)
+            if (xmlfile == None):
+                print("No XML file generated for image info. Returning")
+                return (-1, "No Image XML File generated")
+            print("XML File {} generated for image {}".format(xmlfile, img))
+
+            dfxmlfile = dm.dbGetInfoFromDfxml(image_path)
+            if (dfxmlfile == None):
+                print(">> No DFXML file generated for image info. Returning")
+                return (-1, "No DFXML generated")
+
+            print(">> DFXML File {} generated for image {}".format(dfxmlfile, img))
+
+            # Read the XML file and populate the record for this image
+            if bld_imgdb:
+                dbrec = bcawGetXmlInfo(xmlfile)
+                ##dbu_create_table_if_doesntexist("bcaw_images")
+                dbrec['image_name'] = img
+
+                # Populate the db:
+                # Add the created record/session to the DB
+                bcawDbSessionAdd(dbrec)
+
+                ## print("D: Adding dbrec session to the DB: ", dbrec)
+            if bld_dfxmldb:
+                d_dbrec = bcawGetDfxmlInfo(dfxmlfile, img)
+
+            image_index +=1
+        else:
+            continue
+    #db.session.commit()
+
+    print 'D: Image_list: ', image_list
+    if table_added > 0:
+        return(0, "New tables added to the DB")
+    else:
+        return(0, "Table entries exist for all images")
 
 class BcawImages(db_login.Model):
     __tablename__ = 'bcaw_images'
@@ -348,6 +423,90 @@ def dbinit():
 def bcawdb():
     dbinit()
     dbBrowseImages()
+
+def dbu_get_conn():
+    """ DB utility function to get the connection handle for
+        the database.
+    """
+    conn = psycopg2.connect("\
+	dbname='bca_db'\
+	user='vagrant'\
+        host = '127.0.0.1' \
+	password='vagrant'\
+    ");
+    return conn
+
+def dbu_print_records():
+    '''
+    conn = psycopg2.connect("\
+	dbname='bca_db'\
+	user='vagrant'\
+        host = '127.0.0.1' \
+	password='vagrant'\
+    ");
+    '''
+    conn = dbu_get_conn()
+    c = conn.cursor()
+    try:
+        c.execute("SELECT * FROM bcaw_images")
+        records = c.fetchall()
+        import pprint
+        pprint.pprint(records)
+    except:
+        print "Tables dont exist"
+
+def dbu_drop_table(table_name):
+    """ DB utility function to drop the specified table from the DB
+    """
+    conn = dbu_get_conn()
+    c = conn.cursor()
+    psql_cmd = "drop table " + table_name
+    try:
+        c.execute(psql_cmd)
+        print "D: Dropped table ", table_name
+        conn.commit()
+        message_string = "Dropped table "+ table_name
+        return(0, message_string)
+    except:
+        # Table doesn't exist
+        print ">> Table {} does not exist ".format(table_name)
+        message_string = "Table "+ table_name + " does not exist"
+        return(-1, message_string)
+
+def dbu_create_table_if_doesntexist(table_name):
+    conn = dbu_get_conn()
+    c = conn.cursor()
+    exec_cmd = "SELECT * FROM " + table_name
+    try:
+        c.execute(exec_cmd)
+    except:
+        # Table doesn't exist. so create.
+        db_login.create_all()
+
+def dbu_does_image_exist(image_name, table):
+    """ DB utility function to check if a table entry for the given image
+        already exists in the DB.
+        Returns True or False.
+    """
+    ## print "D: dbu_does_image_exist: image_name:{} table_name:{}".format(image_name, table)
+    conn = dbu_get_conn()
+    c = conn.cursor()
+    exec_cmd = "SELECT * FROM " + table
+    try:
+        c.execute(exec_cmd)
+    except:
+        # Table doesn't exist. so create.
+        db_login.create_all()
+        return False
+
+    for row in c.fetchall():
+      img_found = row[1]
+      if img_found == image_name:
+          ## print("D: dbu_does_image_exist: Found the Image ", image_name)
+          return True
+
+    ## print "  python type of image data is", type(row[2])
+    return False
 
 ## FIXME: Just for testing - Will be removed
 @app.route('/')
