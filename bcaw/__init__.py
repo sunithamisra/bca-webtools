@@ -15,7 +15,6 @@
 from flask import Flask
 app = Flask(__name__)
 import bcaw.image_browse
-import admin
 
 # main_app = app
 
