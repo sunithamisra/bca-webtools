@@ -754,8 +754,12 @@ def bcaw_generate_file_list():
         FIXME: Currently this method is not providing very useful info compared
         to the db query. This needs some more thinking to make it more useful
     """
-    #outfile = "/tmp/outfile"
-    outfile = app.config['FILENAME_INDEXDIR'] + '/filelist_to_index.txt'
+    outfile_dir = app.config['FILENAME_INDEXDIR']
+    outfile = outfile_dir + '/filelist_to_index.txt'
+    print "D: bcaw_generatefile_list: Creating : ", outfile, outfile_dir
+
+    if not os.path.exists(outfile_dir):
+        subprocess.check_output("mkdir " + outfile_dir, shell=True) 
     subprocess.check_output("touch " + outfile, shell=True)
     for dfxml_file in os.listdir(image_dir):
         if dfxml_file.endswith("_dfxml.xml"):
@@ -767,7 +771,6 @@ def bcaw_generate_file_list():
             subprocess.check_output(cat_cmd, shell=True)
 
     print "Returning outfile: ", os.path.dirname(outfile)
-    #return outfile
     return os.path.dirname(outfile)
 
 @app.route('/admin', methods=['GET', 'POST'])
