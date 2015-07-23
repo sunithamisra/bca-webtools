@@ -79,7 +79,7 @@ class QueryForm(Form):
     """ The search query in the home page which has a search box and a set of
         radio buttons to choose the search option: filename or contents.
         If option 'filename' is chosen, the search tries to match the search
-        string with the filenames int he database. If 'contents' option is
+        string with the filenames in the database. If 'contents' option is
         chosen, it searches the contents in the directory bca-webtools/files_to_index.
         (Indexes for these files are stored in bca-webtools/lucene_index
 
@@ -109,36 +109,48 @@ class QueryForm(Form):
         print "D: radio_option: ", self.radio_option.data.lower()
 
         if not Form.validate(self):
-            print("D: bcaw_forms: Validate failed. returning ");
+            print("bcaw_forms: Validate failed. returning ");
             return None, self.radio_option.data.lower()
 
         search_text_query = '%' + self.search_text.data.lower() + '%'
-        print "search_text_query = ", search_text_query
+        print "D: bcaw_forms: search_text_query = ", search_text_query
 
         # If radio_button indicates 'filename', do a filename search. 
         # Otherwise (contents), do a lucene index search
-        if self.radio_option.data.lower() in "filename":
-            print("BCAW: It is a filename Search ")
+        # There are two options to do the file_name search. One is from the DB,
+        # which is the default at this time. The second one is from the indexes.
+        # NOTE (FIXME):
+        # Currently the index is built from the list of all files. That doesn't
+        # give information on the path of the file, etc. That will be addressed soon.
+        if self.radio_option.data.lower() in "filename" and app.config["FILESEARCH_DB"]:
+            print("D: bcaw_forms: It is a filename Search ")
+
+            # Method#1: Using DB Query for file-name search
+            # This works just fine.
             q1 = bcaw_db.BcawDfxmlInfo.query.filter(bcaw_db.BcawDfxmlInfo.fo_filename.ilike(search_text_query))
-            print("Query: ", q1.limit(5).all())
+            print("D: bcaw_forms: Query: ", q1.limit(5).all())
     
             q2 = q1.all()
             if len(q2) == 0:
                 print "Query: Not found: ", self.search_text.data.lower()
                 return None, 'filename'
             last_elem = len(q2) - 1
-            print "D: Length-1: ", last_elem
+            ## print "D: Length-1: ", last_elem
             return q2, "filename"
         else:
-            print("BCAW: It is a Content Search ")
+            # It could be filename search with index or content search.
+            if self.radio_option.data.lower() in "filename":
+                indexDir = app.config['FILE_INDEXDIR']
+            else:
+                indexDir = app.config['INDEX_DIR']
+
+            print("D: BCAW: It is a Content Search: indexDir: ", indexDir)
             print 'lucene', lucene.VERSION
             #base_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
             #directory = SimpleFSDirectory(File(os.path.join(base_dir, INDEX_DIR)))
   
             # The directory where the indexes are stored is a configurable option
             # and is defined in bcaw_default_settings.py
-            indexDir = app.config['INDEX_DIR']
-            ## print("D: INDEX_DIR: ", indexDir)
 
             directory = SimpleFSDirectory(File(indexDir))
             searcher = IndexSearcher(DirectoryReader.open(directory))
