@@ -18,6 +18,8 @@ INDEX_DIR = "IndexFiles.index"
 
 import sys, os, lucene, threading, time
 from datetime import datetime
+import subprocess
+from subprocess import Popen,PIPE
 
 from java.io import File
 from org.apache.lucene.analysis.miscellaneous import LimitTokenCountAnalyzer
@@ -73,12 +75,32 @@ class IndexFiles(object):
 
         for root, dirnames, filenames in os.walk(root):
             for filename in filenames:
-                if not (filename.endswith('.txt') or filename.endswith('.pdf') or filename.endswith('.xml')):
+                if not (filename.endswith('.txt') or filename.endswith('.pdf') or filename.endswith('.xml') or filename.endswith('.doc')):
                     continue
-                print "adding", filename
+                print "indexDocs: adding", filename
                 try:
-                    path = os.path.join(root, filename)
-                    file = open(path)
+                    file_path = os.path.join(root, filename)
+                    outfile_path = file_path
+
+                    # First convert PDF and DOC files to text
+                    if filename.endswith('.pdf'):
+                        print "D: indexDocs: It Is a PDF file" , filename
+                        outfile = filename.replace('.pdf', '.txt')
+                        outfile_path = os.path.join(root, outfile)
+                        cmd = 'pdftotext ' + '-layout ' + file_path + ' ' + outfile_path 
+                        print "D: indexDocs: pdftotext Command: ", cmd
+                        subprocess.check_output(cmd, shell=True)
+                        file_path = outfile_path
+                    elif filename.endswith('.doc'):
+                        print "D: indexDocs: It Is a .DOC file" , filename
+                        outfile = filename.replace('.doc', '.txt')
+                        outfile_path = os.path.join(root, outfile)
+                        cmd = 'antiword ' +  file_path + ' >> ' + outfile_path
+                        print "D: indexDocs: antiword Command: ", cmd
+                        subprocess.check_output(cmd, shell=True)
+                        file_path = outfile_path
+
+                    file = open(file_path)
                     contents = unicode(file.read(), 'iso-8859-1')
                     file.close()
                     doc = Document()
