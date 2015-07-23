@@ -13,6 +13,13 @@ SCRIPT_PATH=$(dirname $(readlink -f $0 ) )
 # combination.  See the README for further detais.
 ##
 
+# Update and upgrade the box
+sudo apt-get update
+sudo apt-get upgrade
+
+# Install subversion
+sudo apt-get install subversion
+
 # Install python-dev
 sudo apt-get install -y python-dev
 
@@ -78,6 +85,9 @@ sudo apt-get install -y ant-optional
 sudo apt-get install -y ivy
 sudo apt-get install -y ivy-doc
 
+# Update shared libraries
+sudo ldconfig
+
 cd /tmp
 
 #  Install pylucene. It also installs JCC
@@ -139,6 +149,11 @@ git clone https://github.com/py4n6/pytsk
 cd pytsk
 python setup.py build
 sudo python setup.py install
+
+# install antiword (doc2text) and pdf2text
+sudo apt-get install -y antiword
+sudo apt-get install -y poppler-utils
+
 
 # link to the shared image folder
 #sudo mkdir /home/bcadmin
