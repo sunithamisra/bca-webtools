@@ -29,6 +29,10 @@ from sqlalchemy import *
 from bcaw_userlogin_db import db_login, User, dbinit
 ###from runserver import db_login
 from werkzeug.routing import BaseConverter
+
+import subprocess
+from subprocess import Popen,PIPE
+
 '''
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relation, sessionmaker
@@ -185,14 +189,14 @@ def bcawBrowseImages(db_init=True):
 
     # Build lucene index for the files stored in
 
-    print("Building Lucene Indexes for root {} dest :{}".format(dirFilesToIndex, indexDir))
+    ''' # Commented - to be removed later - since we want to invoke this on demand
+    print(">> Building Lucene Indexes for root {} dest :{}".format(dirFilesToIndex, indexDir))
 
-    ##lucene.initVM(vmargs=['-Djava.awt.headless=true'])
-    print 'lucene', lucene.VERSION
-
+    print("D: dirFilesToIndex: ", dirFilesToIndex)
     if os.path.exists(dirFilesToIndex) :
         print("Calling Index fn")
         bcaw_index.IndexFiles(dirFilesToIndex, indexDir)
+    '''
    
   
     # Render the template for main page.
@@ -665,7 +669,7 @@ def query():
                 i = 0
                 # Note; For now, two separae lists are maintained - one for filename
                 # and another for the corresponding image. If we need more than two
-                # columns to display then it makes sense to have an array if structues
+                # columns to display then it makes sense to have an array of structues
                 # instead of 2 separate lists.
                 for list_item in search_result_list:
                     #search_result_file_list[i] = list_item.fo_filename
@@ -742,6 +746,30 @@ def query():
     return render_template("fl_profile.html")
     '''
 
+def bcaw_generate_file_list():
+    """ Using dfxml file, this routine filters the lines containing filename and
+        puts them in a file to use as an input to the indexing function.
+        This is done in order to provide a search option to look for filenames
+        using lucene indexing as opposed to a DB query.
+        FIXME: Currently this method is not providing very useful info compared
+        to the db query. This needs some more thinking to make it more useful
+    """
+    #outfile = "/tmp/outfile"
+    outfile = app.config['FILENAME_INDEXDIR'] + '/filelist_to_index.txt'
+    subprocess.check_output("touch " + outfile, shell=True)
+    for dfxml_file in os.listdir(image_dir):
+        if dfxml_file.endswith("_dfxml.xml"):
+            print "Listing files from dfxml file: ", dfxml_file
+            file_list_cmd = "cd "+ image_dir + "; " + "grep '\<filename\>' " + dfxml_file + " > /tmp/file1; sed \'s/<filename>//g\' /tmp/file1 > /tmp/file2; sed \'s/<\/filename>//g\' /tmp/file2 > /tmp/file3;"
+            print("D: bcaw_generate_file_list: File_list_cmd: ", file_list_cmd)
+            subprocess.check_output(file_list_cmd, shell=True)
+            cat_cmd =  "cat /tmp/file3 >> " + outfile
+            subprocess.check_output(cat_cmd, shell=True)
+
+    print "Returning outfile: ", os.path.dirname(outfile)
+    #return outfile
+    return os.path.dirname(outfile)
+
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
   form = adminForm()
@@ -786,13 +814,28 @@ def admin():
         db_option = 5
         retval, db_option_msg = bcaw_db.dbu_drop_table("bcaw_dfxmlinfo")
     elif (form.radio_option.data.lower() == 'generate_index'):
-        #FIXME: This is not supported yet.
+        # First biuld the index for th filenames. Then build the index
+        # for the contents from the configured directory. The contents index
+        # is built in 
         db_option = 6
         db_option_msg = "Option not yet supported"
+        dirFileNamesToIndex = bcaw_generate_file_list()
+        if os.path.exists(dirFileNamesToIndex):
+            print("D: Indexing Filenames ")
+            index_dir = app.config['FILENAME_INDEXDIR']
+            bcaw_index.IndexFiles(dirFileNamesToIndex, index_dir)
+            print("Filename Index built in directory ", index_dir)
+            db_option_msg = "Index built"
+        # Now build the indexes for the content files fromn directory files_to-index
+        if os.path.exists(dirFilesToIndex) :
+            print "Building Indexes for contents in ", dirFilesToIndex
+            bcaw_index.IndexFiles(dirFilesToIndex, indexDir)
+            print "Built indexes for contents in ", indexDir
+
     return render_template('fl_admin_results.html',
                            db_option=str(db_option),
                            db_option_msg=str(db_option_msg),
-                           form=form)  # TEMP
+                           form=form)
  
   elif request.method == 'GET':
     return render_template('fl_admin.html', form=form)
