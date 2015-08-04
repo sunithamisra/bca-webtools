@@ -19,6 +19,7 @@ import pytsk3
 import os, sys, string, time, re
 import subprocess
 import fileinput
+import xml.etree.ElementTree as ET
 
 #FIXME: Note: This file is created to be the common utils file. A few 
 # routines are moved here from image_browse.py file, but are also retained
@@ -93,6 +94,7 @@ class bcaw:
         return (self.num_partitions)
 
     def bcawGenFileList(self, image_path, image_index, partition_num, root_path):
+        ## print("D1: image_path: {} index: {} part: {} rootpath: {}".format(image_path, image_index, partition_num, root_path))
         img = pytsk3.Img_Info(image_path)
         # Get the start of the partition:
         part_start = self.partDictList[int(image_index)][partition_num-1]['start_offset']
@@ -267,3 +269,45 @@ def istext(filename):
     if float(len(t))/float(len(s)) > 0.30:
         return False
     return True
+
+def bcawGetPathFromDfxml(in_filename, dfxmlfile):
+    """ In order to get the complete path of each file being indexed, we use'
+        the information from the dfxml file. This routine looks for the given file
+        in the given dfxml file and returns the <filename> info, whic happens
+        to be the complete path. 
+        NOTE: In case this process is contributing significantly
+        to the indexing time, we need to find a better way to get this info.
+    """
+    ## print("D1: bcawGetPathFromDfxml: in_filename: {}, dfxmlfile: {}".format(in_filename, dfxmlfile))
+
+    try:
+        tree = ET.parse( dfxmlfile )
+    except IOError, e:
+        print "Failure Parsing %s: %s" % (dfxmlfile, e)
+
+    root = tree.getroot() # root node
+    for child in root:
+        if child.tag == "volume":
+            volume = child
+            for vchild in volume:
+                if vchild.tag == "fileobject":
+                    fileobject = vchild
+                    for fo_child in fileobject:
+                        if fo_child.tag == 'filename':
+                            f_name = fo_child.text
+                            # if this is the filename, return the path.
+                            # "fielname" has the complete path in the DFXML file.
+                            # Extract just the fiename to compare with 
+                            base_filename = os.path.basename(f_name)
+                            ## print("D2: base_filename: {}, f_name: {}".format(base_filename, f_name)) 
+                            if in_filename == base_filename:
+                                return f_name
+
+    return None
+
+def bcawGetParentDir(filepath):
+    file_name_list = filepath.split('/')
+    temp_list = filepath.split("/")
+    temp_list = file_name_list[0:(len(temp_list)-1)]
+    parent_dir = '/'.join(temp_list)
+    return parent_dir
