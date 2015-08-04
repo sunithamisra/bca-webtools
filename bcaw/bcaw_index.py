@@ -53,7 +53,10 @@ class IndexFiles(object):
         store = SimpleFSDirectory(File(store_dir))
         analyzer = LimitTokenCountAnalyzer(analyzer, 1048576)
         config = IndexWriterConfig(Version.LUCENE_CURRENT, analyzer)
-        config.setOpenMode(IndexWriterConfig.OpenMode.CREATE)
+
+        # setting CREATE will rewrite over the existing indexes.
+        ###config.setOpenMode(IndexWriterConfig.OpenMode.CREATE)
+
         writer = IndexWriter(store, config)
 
         self.indexDocs(root, writer)
@@ -73,30 +76,31 @@ class IndexFiles(object):
         t2.setTokenized(True)
         t2.setIndexOptions(FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS)
 
+        ## print("D1: indexDocs:root: ", root)
         for root, dirnames, filenames in os.walk(root):
             for filename in filenames:
+                # We can index only a certain types of files
                 if not (filename.endswith('.txt') or filename.endswith('.pdf') or filename.endswith('.xml') or filename.endswith('.doc')):
                     continue
-                print "indexDocs: adding", filename
                 try:
                     file_path = os.path.join(root, filename)
                     outfile_path = file_path
 
                     # First convert PDF and DOC files to text
                     if filename.endswith('.pdf'):
-                        print "D: indexDocs: It Is a PDF file" , filename
+                        ## print "D2: indexDocs: It Is a PDF file" , filename
                         outfile = filename.replace('.pdf', '.txt')
                         outfile_path = os.path.join(root, outfile)
-                        cmd = 'pdftotext ' + '-layout ' + file_path + ' ' + outfile_path 
-                        print "D: indexDocs: pdftotext Command: ", cmd
+                        cmd = 'pdftotext ' + '-layout ' + "'"+ file_path +  "'" + ' ' + "'" + outfile_path + "'" 
+                        ## print "D1: indexDocs: pdftotext Command: ", cmd
                         subprocess.check_output(cmd, shell=True)
                         file_path = outfile_path
                     elif filename.endswith('.doc'):
-                        print "D: indexDocs: It Is a .DOC file" , filename
+                        ## print "D2: indexDocs: It Is a .DOC file" , filename
                         outfile = filename.replace('.doc', '.txt')
                         outfile_path = os.path.join(root, outfile)
                         cmd = 'antiword ' +  file_path + ' >> ' + outfile_path
-                        print "D: indexDocs: antiword Command: ", cmd
+                        ## print "D1: indexDocs: antiword Command: ", cmd
                         subprocess.check_output(cmd, shell=True)
                         file_path = outfile_path
 
@@ -111,6 +115,7 @@ class IndexFiles(object):
                     else:
                         print "warning: no content in %s" % filename
                     writer.addDocument(doc)
+                    ## print "indexDocs: Added Document for ", filename
                 except Exception, e:
                     print "Failed in indexDocs:", e
 
