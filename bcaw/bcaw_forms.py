@@ -152,6 +152,15 @@ class QueryForm(Form):
             # The directory where the indexes are stored is a configurable option
             # and is defined in bcaw_default_settings.py
 
+            # Start lucene VM only if it is not started yet.
+            # It is started when the indexes are built. But if one tries to search
+            # with indexes that are already saved in the index directory, the 
+            # VM needs to be started.
+            vm_env = lucene.getVMEnv()
+            if vm_env == None:
+                print "D: baw_forms: Sarting Lucene VM: "
+                lucene.initVM()
+
             directory = SimpleFSDirectory(File(indexDir))
             searcher = IndexSearcher(DirectoryReader.open(directory))
             analyzer = StandardAnalyzer(Version.LUCENE_CURRENT)
