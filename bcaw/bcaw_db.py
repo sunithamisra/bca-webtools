@@ -113,7 +113,7 @@ def bcawGetDfxmlInfo(dfxmlfile, img):
     try:
         tree = ET.parse( dfxmlfile )
     except IOError, e:
-        print "Failure Parsing %s: %s" % (dxmlfile, e)
+        print "Failure Parsing %s: %s" % (dfxmlfile, e)
 
     d_dbrec = dict()
     root = tree.getroot() # root node
@@ -319,7 +319,7 @@ class BcawDfxmlInfo(db_login.Model):
     first_block = db_login.Column(db_login.Integer)
     last_block = db_login.Column(db_login.Integer)
     fo_parent_inode = db_login.Column(db_login.Integer)
-    fo_filename = db_login.Column(db_login.String(100))
+    fo_filename = db_login.Column(db_login.String(255))
     fo_partition = db_login.Column(db_login.Integer)
     fo_id = db_login.Column(db_login.Integer)
     fo_name_type = db_login.Column(db_login.String(1))
