@@ -20,6 +20,7 @@ import os, sys, string, time, re
 from mimetypes import MimeTypes
 from datetime import date
 from bcaw_utils import bcaw
+import bcaw_utils
 import lucene
 
 from bcaw import app
@@ -86,18 +87,19 @@ def bcawBrowse(db_init = True):
         if img.endswith(".E01") or img.endswith(".AFF"):
             ## print img
             global image_list
-            image_list.append(img)
 
             dm = bcaw()
             image_path = image_dir+'/'+img
             dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
+            image_list.append(img, dm.num_partitions)
+
             idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
             image_db_list.append(idb)
             ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
             image_index +=1
         else:
             continue
-  
+
     # Render the template for main page.
     # print 'D: Image_list: ', image_list
     global num_images
@@ -139,6 +141,9 @@ def bcawBrowseImages(db_init=True):
     del image_list[:]
     global image_db_list
     del image_db_list [:]
+    global partition_in
+
+    partition_in = dict()
 
     # Create the DB. FIXME: This needs to be called from runserver.py 
     # before calling run. That seems to have some issues. So calling from
@@ -150,11 +155,13 @@ def bcawBrowseImages(db_init=True):
         if img.endswith(".E01") or img.endswith(".AFF"):
             ## print img
             global image_list
-            image_list.append(img)
 
             dm = bcaw()
             image_path = image_dir+'/'+img
             dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
+            image_list.append(img)
+            partition_in[img] = dm.num_partitions
+
             idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
             image_db_list.append(idb)
             ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
@@ -175,30 +182,13 @@ def bcawBrowseImages(db_init=True):
                 ## print("D: Calling bcawDnldRepo with root ", file_list_root)
                 # NOTE: The following is under construction. Hence commented out.
                 ####bcawDnldRepo(file_list_root, part_dir, image_index, p, image_path, '/')
-            '''
-                for item in file_list_root:
-                    if item['isdir'] == True:
-                        print("It is a DIR", item['name'])
-                    else:
-                        print("It is a FILE", item['name'])
-            '''
 
             image_index +=1
         else:
             continue
 
-    # Build lucene index for the files stored in
+    global partition_in
 
-    ''' # Commented - to be removed later - since we want to invoke this on demand
-    print(">> Building Lucene Indexes for root {} dest :{}".format(dirFilesToIndex, indexDir))
-
-    print("D: dirFilesToIndex: ", dirFilesToIndex)
-    if os.path.exists(dirFilesToIndex) :
-        print("Calling Index fn")
-        bcaw_index.IndexFiles(dirFilesToIndex, indexDir)
-    '''
-   
-  
     # Render the template for main page.
     # print 'D: Image_list: ', image_list
     global num_images
@@ -214,35 +204,123 @@ def bcawBrowseImages(db_init=True):
 
     return render_template('fl_temp_ext.html', image_list=image_list, np=dm.num_partitions, image_db_list=image_db_list, user=user, signup_out = signup_out, form=qform)
 
+def bcawDnldSingleFile(file_item, fs, filepath, index_dir):
+    """ While indexing we download every file in the image, index it and remove. This
+        routine does exactly that - gets the inode of the file_item, calls the
+        pytsk3 APs (open_meta, info.meta, read_random) to get the handle for that
+        file, extract the size and read the data into a buffer.
+        The buffer is copied into a file, which rsides in the same path as it does
+        wihtin the disk image.
+    """
+    ## print(">> D1: Downloading File: {}, filepath: {} ".format(file_item['name'], filepath))
 
-def bcawDnldRepo(root_dir_list, root_dir_path, image_index, partnum, image_path, root_path):
-    # NOTE:
-    # This routine is used to download the contents of the image which are text based,
-    # in order to use for indexing for search utility. It is still under construction
-    # since we need to figure out a way where we can download one file at a time,
-    # build its index, append to the existing index and delete the file before
-    # downloading another.
-        print("Root dir list: ",root_path, len(root_dir_list),   root_dir_list)
-        num_elements = len(root_dir_list)
-        dm = bcaw()
-        #root_path = '/'
+    f = fs.open_meta(inode=file_item['inode'])
+
+    # Read data and store it in a string
+    offset = 0
+    size = f.info.meta.size
+    BUFF_SIZE = 1024 * 1024
+
+    total_data = ""
+    while offset < size:
+        available_to_read = min(BUFF_SIZE, size - offset)
+        data = f.read_random(offset, available_to_read)
+        if not data:
+            # print("Done with reading")
+            break
+
+        offset += len(data)
+        total_data = total_data+data
+        ## print("D2: Length OF TOTAL DATA: ", len(total_data))
+
+    ## print("D2: Dumping the contents to filepath ", filepath)
+
+    with open(filepath, "w") as text_file:
+        text_file.write(total_data)
+
+    ## print ("D2: Time to index the file ", filepath)
+    basepath = os.path.dirname(filepath)
+    bcaw_index.IndexFiles(basepath, index_dir)
+
+    ## print("D2: Done Indexing the file. Time to delete it ", filepath)
+
+    rmcmd = "rm " + '"' + filepath + '"'
+    subprocess.check_output(rmcmd, shell=True, stderr=subprocess.STDOUT)
+    ## print("D2:: Removed file ", filepath)
+
+    if filepath.endswith('.pdf'):
+        filepath_txt = filepath.replace('.pdf', '.txt')
+        rmcmd_1 = "rm " + '"' + filepath_txt + '"'
+        if os.path.exists(filepath_txt):
+            subprocess.check_output(rmcmd_1, shell=True, stderr=subprocess.STDOUT)
+
+def bcawDnldRepo(img, root_dir_list, fs, image_index, partnum, image_path, root_path):
+    """This routine is used to download the indexable files of the Repository
+    """
+    ## print("D: bcawDnldRepo: Root={} len={} ".format(root_path, len(root_dir_list)))
+    num_elements = len(root_dir_list)
+    dm = bcaw()
+    #root_path = '/'
+    #new_path = root_path
+    if root_path == '/':
+        new_path = ""
+    else:
         new_path = root_path
-        for item in root_dir_list:
-            if item['isdir'] == True:
-                print("It is a Directory", item['name'])
-                if item['name'] == '.' or item['name'] == '..':
-                    continue
-                new_path = new_path + '/'+ str(item['name'])
+    for item in root_dir_list:
+        if item['isdir'] == True:
+            ## print("D1: It is a Directory", item['name'])
+            if item['name'] == '.' or item['name'] == '..':
+                continue
+            new_path = new_path + '/'+ str(item['name'])
 
-                # Call the function recursively
-                item_root_dir = root_dir_path + '/' + str(item['name'])
+            dfxml_file = image_path + "_dfxml.xml"
 
-                #new_path = root_path + '/' + str(item['name'])
-                print("Calling func recursively with root - Newpath: ", item['name'], item, new_path)
-                new_filelist_root, fs = dm.bcawGenFileList(image_path, image_index, partnum, new_path)
-                bcawDnldRepo(new_filelist_root, item_root_dir, image_index, partnum, image_path, new_path)
-            else:
-                print("It is a File", item['name'])
+            new_path = bcaw_utils.bcawGetPathFromDfxml(str(item['name']), dfxml_file)
+            ## print("D: bcawDnldRepo: path from Dfxml file: ", new_path)
+
+            directory_path = app.config['FILES_TO_INDEX_DIR'] + "/" + new_path
+            ## print ("D1: bcaDnldRepo: Trying to create directory ", directory_path)
+
+            if not os.path.exists(directory_path):
+                cmd = "mkdir " + re.escape(directory_path)
+                ## print("bcawDnldRepo: Creating directry with command: ", cmd)
+                subprocess.check_output(cmd, shell=True)
+                ## print("D2: Created directory {}".format(directory_path))
+
+            # Generate the file-list under this directory
+            new_filelist_root, fs = dm.bcawGenFileList(image_path, image_index, partnum, new_path)
+            # Call the function recursively
+            ## print("bcawDnldRepo: Calling func recursively with item-name: {}, new_path:{}, item: {}".format(item['name'], new_path, item))
+            bcawDnldRepo(img, new_filelist_root, fs, image_index, partnum, image_path, new_path)
+        else:
+            ## print("D2: bcawDnldRepo: It is a File", item['name'])
+            filename = item['name'] # FIXME: Test more to make sure files with space work.
+
+            #if item['name_slug'] != "None" and item['inode'] == int(inode) :
+            if item['name_slug'] != "None" :
+
+                # Strip the digits after the last "-" from filepath to get inode
+                #new_filepath, separater, inode = filepath.rpartition("-")
+                ## print("D >> Found a slug name ",item['name'], item['name_slug'])
+                filename = item['name_slug']
+
+            # If it is indexable file, download it and generate index.
+            if (filename.endswith('.txt') or filename.endswith('.pdf') or filename.endswith('.xml') or filename.endswith('.doc')):
+
+                ## print "D2: bcawDnldRepo: Indexing file {} in dir {}".format(filename, dirFilesToIndex)
+                dfxml_file = image_path + "_dfxml.xml"
+                ## print("D2: bcawDnldRepo: Calling bcawGetPathFromDfxml: dfxml_file: ", dfxml_file)
+                # We will use the 'real' file name while looking for it in dfxml file
+                new_file_path = bcaw_utils.bcawGetPathFromDfxml(item['name'], dfxml_file)
+
+                # If there is space in the file-name, replace it by %20
+                new_file_path = new_file_path.replace(" ", "%20")
+
+                file_path = app.config['FILES_TO_INDEX_DIR'] + "/" + str(new_file_path)
+                ## print("D: bcawDnldRepo: Calling bcawDnldSingleFile function for path: ", file_path)
+
+                ## print (">> Indexing Image:{}-{}, File: {}".format(img, partnum, file_path))
+                bcawDnldSingleFile(item, fs, file_path, indexDir)
 
 def bcawGetImageIndex(image, is_path):
     global image_list
@@ -550,7 +628,7 @@ def home():
             image_index +=1
         else:
             continue
-  
+
     # Render the template for main page.
     # print 'D: Image_list: ', image_list
     global num_images
@@ -682,18 +760,18 @@ def query():
                 num_results = len(search_result_list)
         else: # search type is "Contents"
             if search_result_list == None:
-                print "No search results for ", searched_phrase
+                print ">> No search results for ", searched_phrase
                 num_results = 0
             else:
-                print "search result list: ", search_result_list
+                ## print "D2: search result list: ", search_result_list
                 num_results = len(search_result_list)
                 search_result_file_list = search_result_list
 
         if search_result_list == None:
-            print "Query: searchDfxmlDb FAILED "
+            print ">> Query: searchDfxmlDb FAILED "
             num_results = 0
         else:
-            print "Searched for ", searched_phrase
+            print ">> Searched for ", searched_phrase
 
         user = "Sign In"
         signup_out = "Sign Up"
@@ -773,6 +851,39 @@ def bcaw_generate_file_list():
     print "Returning outfile: ", os.path.dirname(outfile)
     return os.path.dirname(outfile)
 
+def bcawIndexAllFiles():
+    global image_list
+    global image_db_list
+    global partition_in
+    global image_dir
+    print "bcawIndexAllFiles: image_list: ", image_list
+    print "bcawIndexAllFiles: image_db_list: ", image_db_list
+
+    image_index = 0
+    for img in os.listdir(image_dir):
+        print(">> Building Index for image: ", img)
+        if img.endswith(".E01") or img.endswith(".AFF"):
+            dm = bcaw()
+            image_path = image_dir+'/'+img
+            #dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
+
+            print("bcawIndexAllFiles: parts: ", partition_in[img])
+            temp_root_dir = "/vagrant"
+            for p in range(0, partition_in[img]):
+                # make the directory for this img and partition
+                part_dir = str(temp_root_dir) + '/img'+str(image_index)+"_"+ str(p)
+
+                ## print("Part Dir: ", part_dir)
+                #os.makedir(part_dir)
+                file_list_root, fs = dm.bcawGenFileList(image_path, image_index,
+                                             int(p), '/')
+                ## print("D: Calling bcawDnldRepo with root ", file_list_root)
+                # NOTE: The following is under construction. Hence commented out.
+                ####bcawDnldRepo(file_list_root, part_dir, image_index, p, image_path, '/')
+                bcawDnldRepo(img, file_list_root, fs, image_index, p, image_path, '/')
+
+            image_index += 1
+
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
   form = adminForm()
@@ -830,6 +941,10 @@ def admin():
             print("Filename Index built in directory ", index_dir)
             db_option_msg = "Index built"
         # Now build the indexes for the content files fromn directory files_to-index
+
+        # First get the files starting from the root, for each image listed
+        bcawIndexAllFiles()
+
         if os.path.exists(dirFilesToIndex) :
             print "Building Indexes for contents in ", dirFilesToIndex
             bcaw_index.IndexFiles(dirFilesToIndex, indexDir)
