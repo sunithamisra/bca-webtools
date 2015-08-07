@@ -284,7 +284,10 @@ def bcawDnldRepo(img, root_dir_list, fs, image_index, partnum, image_path, root_
             if not os.path.exists(directory_path):
                 cmd = "mkdir " + re.escape(directory_path)
                 ## print("bcawDnldRepo: Creating directry with command: ", cmd)
-                subprocess.check_output(cmd, shell=True)
+                try:
+                    shelloutput = subprocess.check_output(cmd, shell=True)
+                except subprocess.CalledProcessError as cmdexcept:
+                    print "Error code: ", cmdexcept.returncode, cmdexcept.output
                 ## print("D2: Created directory {}".format(directory_path))
 
             # Generate the file-list under this directory
@@ -842,10 +845,15 @@ def bcaw_generate_file_list():
     for dfxml_file in os.listdir(image_dir):
         if dfxml_file.endswith("_dfxml.xml"):
             print "Listing files from dfxml file: ", dfxml_file
-            file_list_cmd = "cd "+ image_dir + "; " + "grep '\<filename\>' " + dfxml_file + " > /tmp/file1; sed \'s/<filename>//g\' /tmp/file1 > /tmp/file2; sed \'s/<\/filename>//g\' /tmp/file2 > /tmp/file3;"
+            file_list_cmd ="cd "+ image_dir + "; rm -rf tempdir; mkdir tempdir; " + "grep '\<filename\>' " + dfxml_file + " > tempdir/file1; sed \'s/<filename>//g\' tempdir/file1 > tempdir/file2; sed \'s/<\/filename>//g\' tempdir/file2 > tempdir/file3;"
             print("D: bcaw_generate_file_list: File_list_cmd: ", file_list_cmd)
-            subprocess.check_output(file_list_cmd, shell=True)
-            cat_cmd =  "cat /tmp/file3 >> " + outfile
+
+            try:
+                subprocess.check_output(file_list_cmd, shell=True)
+            except subprocess.CalledProcessError as cmdexcept:
+                print "file_list_cmd failed. Error Code: ", cmdexcept.returncode, cmdexcept.output
+
+            cat_cmd =  "cat " + image_dir + "/tempdir/file3 >> " + outfile
             subprocess.check_output(cat_cmd, shell=True)
 
     print "Returning outfile: ", os.path.dirname(outfile)
@@ -944,6 +952,10 @@ def admin():
 
         # First get the files starting from the root, for each image listed
         bcawIndexAllFiles()
+
+        # FIXME: Get the return code from bcawIndexAllFiles to set db_option_msg.
+        # Till now, we will assume success.
+        db_option_msg = "Index built"
 
         if os.path.exists(dirFilesToIndex) :
             print "Building Indexes for contents in ", dirFilesToIndex
