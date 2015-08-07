@@ -867,6 +867,12 @@ def bcawIndexAllFiles():
     print "bcawIndexAllFiles: image_list: ", image_list
     print "bcawIndexAllFiles: image_db_list: ", image_db_list
 
+    # First, create the directory FILES_TO_INDEX_DIR if doesn't exist
+    files_to_index_dir = app.config['FILES_TO_INDEX_DIR']
+    if not os.path.exists(files_to_index_dir):
+        cmd = "mkdir " + files_to_index_dir
+        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+
     image_index = 0
     for img in os.listdir(image_dir):
         print(">> Building Index for image: ", img)
