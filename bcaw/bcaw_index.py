@@ -64,6 +64,7 @@ class IndexFiles(object):
 
     def indexDocs(self, root, writer):
 
+        # t1 is used for filenames and t2 is used for contents
         t1 = FieldType()
         t1.setIndexed(True)
         t1.setStored(True)
