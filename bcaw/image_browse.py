@@ -117,6 +117,35 @@ def bcawBrowse(db_init = True):
 
 '''
 
+# image_matrix is a global list of dictioaries, bcaw_imginfo, one per image.
+image_matrix = []
+bcaw_imginfo = ['img_index', 'img_name', 'img_db_exists', 'dfxml_db_exists', 'index_exists']
+
+def bcawPopulateImgInfoTable(image_index, img, imgdb_flag, dfxmldb_flag, index_flag):
+    """ For the given image (img), this routine updates the corresponding
+        fields of bcaw_imginfo within the list image_matrix.
+        FIXME: Yet to add code to update index flag.
+    """
+    ## print "[D]: bcawPopulateImgInfoTable: index, img: ", image_index, img
+    if img:
+        img_db_exists = False
+        dfxml_db_exists = False
+
+        # Query the DB to see if tables exist for the given image.
+        if bcaw_db.dbu_does_table_exist_for_img(img, "bcaw_images"):
+            img_db_exists = True
+        if bcaw_db.dbu_does_table_exist_for_img(img, "bcaw_dfxmlinfo"):
+            dfxml_db_exists = True
+
+        # Add the querried info to the matrix.
+        image_matrix.append({bcaw_imginfo[0]:image_index, bcaw_imginfo[1]:img, bcaw_imginfo[2]:img_db_exists, bcaw_imginfo[3]:dfxml_db_exists, bcaw_imginfo[4]:0})
+
+    ''' FIXME: REMOVE AFTER TESTING as this is not used
+    if imgdb_flag:
+        image_matrix.append({bcaw_imginfo[0]:image_index, bcaw_imginfo[1]:img})
+    '''
+    ## print "[D] bcawPopulateImgInfoTable: ", image_matrix
+
 #FIXME: The following line should be called in __init__.py once.
 # Since that is not being recognized here, app.config.from_object is
 # added here. This needs to be fixed.
@@ -164,8 +193,12 @@ def bcawBrowseImages(db_init=True):
 
             idb = bcaw_db.BcawImages.query.filter_by(image_name=img).first()
             image_db_list.append(idb)
+ 
             ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
+            #xxx FIXME comment out the below code and run tests. We don't need to 
+            # do this as we don't create db entries at startup
 
+            '''
             # Now download the files in the image to build the indexes.
             # FIXME: For now, I am downloading all the text files. Going forward,
             # each file is indexed and once the index is appended to the existing
@@ -182,8 +215,14 @@ def bcawBrowseImages(db_init=True):
                 ## print("D: Calling bcawDnldRepo with root ", file_list_root)
                 # NOTE: The following is under construction. Hence commented out.
                 ####bcawDnldRepo(file_list_root, part_dir, image_index, p, image_path, '/')
+            '''
 
-            image_index +=1
+            # Populate the image info table with this image name and index
+            if bcawIsImgInMatrix(img):
+                print ">> [D]Not populating the image matrix as it already exists for image", img
+            else:
+                bcawPopulateImgInfoTable(image_index, img, 0, 0, 0)
+                image_index +=1
         else:
             continue
 
@@ -859,13 +898,61 @@ def bcaw_generate_file_list():
     print "Returning outfile: ", os.path.dirname(outfile)
     return os.path.dirname(outfile)
 
+def bcawSetIndexFlag(image_index):
+    """ This routine sets the index flag in the image matrix, for the image
+        corresponding to the given image_index.
+    """
+    for img_tbl_item in image_matrix:
+        if img_tbl_item['img_index'] == image_index:
+            img_tbl_item.update({bcaw_imginfo[4]:1})
+            ## print "[D] Image Matrix After setting Index flag: ", image_matrix
+            break
+    else:
+        print ">> bcawSetIndexFlag: image_index not found ", image_index
+
+def bcawSetFlagInMatrix(flag, value):
+    """ This routine sets the given flag (in bcaw_imginfo) to the given value,
+        in the image matrix, for all the images present.
+    """
+    ## print "[D] bcawSetFlagInMatrix: flag, value: ", flag, value
+    ## print "[D] bcawSetFlagInMatrix: Image Marix Before: ", image_matrix
+    i = 0
+    for img_tbl_item in image_matrix:
+        if flag == 'img_index':
+            if img_tbl_item['img_index'] == image_index:
+                img_tbl_item.update({bcaw_imginfo[4]:1})
+                break
+
+        elif flag == 'img_db_exists':
+            ## print "[D] Setting flag img_db_exists in the image matrix"
+            # Set img_db_exists to the given value for every image in the image_table
+            img_tbl_item.update({bcaw_imginfo[2]:value})
+
+        elif flag == 'dfxml_db_exists':
+            ## print "[D] Setting flag dfxml_db_exists in the image matrix"
+            # Set dfxml_db_exists to the given value for every image in the image_table
+            img_tbl_item.update({bcaw_imginfo[3]:value})
+
+        i += 1
+
+    ## print "[D] bcawSetFlagInMatrix: Image Matrix After setting the falg: ", image_matrix
+
+def bcawIsImgInMatrix(img):
+    for img_tbl_item in image_matrix:
+        if img_tbl_item['img_name'] == img:
+            ## print "[D]Image {} found in the marix. ".format(img)
+            return True
+    else:
+        ## print "image {} NOT found in the matrix ".format(img)
+        return False
+
 def bcawIndexAllFiles():
     global image_list
     global image_db_list
     global partition_in
     global image_dir
-    print "bcawIndexAllFiles: image_list: ", image_list
-    print "bcawIndexAllFiles: image_db_list: ", image_db_list
+    ## print "[D] bcawIndexAllFiles: image_list: ", image_list
+    ## print "[D] bcawIndexAllFiles: image_db_list: ", image_db_list
 
     # First, create the directory FILES_TO_INDEX_DIR if doesn't exist
     files_to_index_dir = app.config['FILES_TO_INDEX_DIR']
@@ -877,6 +964,11 @@ def bcawIndexAllFiles():
     for img in os.listdir(image_dir):
         print(">> Building Index for image: ", img)
         if img.endswith(".E01") or img.endswith(".AFF"):
+            # If index exists for this image, don't do it
+            # FIXME: Query lucene to check the existance of indexing for this 
+            # image and continue to the next image if indexing exiss for this img.
+            # Code needs to be added.
+
             dm = bcaw()
             image_path = image_dir+'/'+img
             #dm.num_partitions = dm.bcawGetPartInfoForImage(image_path, image_index)
@@ -896,6 +988,9 @@ def bcawIndexAllFiles():
                 ####bcawDnldRepo(file_list_root, part_dir, image_index, p, image_path, '/')
                 bcawDnldRepo(img, file_list_root, fs, image_index, p, image_path, '/')
 
+            # If successfully indexed, set the flag to "indexed" in the image table
+            bcawSetIndexFlag(image_index)
+
             image_index += 1
 
 @app.route('/admin', methods=['GET', 'POST'])
@@ -905,6 +1000,7 @@ def admin():
     db_option = 3
     db_option_msg = None
     if (form.radio_option.data.lower() == 'all_tables'):
+        print ">> Admin: Requested all tables build "
         db_option = 1
         db_option_msg = "Built All the Tables"
 
@@ -912,6 +1008,7 @@ def admin():
         # based on the arguments.
         retval, db_option_msg = bcaw_db.dbBuildDb(bld_imgdb = True, bld_dfxmldb = True)
     elif(form.radio_option.data.lower() == 'image_table'):
+        print ">> Admin: Requested Image table build "
         # First check if the particular image exists. If it does, don't build
         # another entry for the same image.
         # NOTE: db_option is not really used at this time. Just keeping it in
@@ -920,14 +1017,26 @@ def admin():
         db_option = 2
         retval, db_option_msg = bcaw_db.dbBuildDb(bld_imgdb = True, bld_dfxmldb = False)
     elif (form.radio_option.data.lower() == 'dfxml_table'):
+        print ">> Admin: Requested DFXML table build "
         db_option = 3
         retval, db_option_msg = bcaw_db.dbBuildDb(bld_imgdb = False, bld_dfxmldb = True)
         if retval == 0:
             db_option_msg = "Built DFXML Table"
     elif (form.radio_option.data.lower() == 'drop_all_tables'):
+        print ">> Admin: Requested Image and DFXML DB Drop "
         db_option = 4
+        ## print "[D]: Dropping img table and updating the matrix for img_db_exists "
         retval_img, message_img = bcaw_db.dbu_drop_table("bcaw_images")
+
+        # update the image_matrix
+        bcawSetFlagInMatrix('img_db_exists', False)
+
+        ## print "[D] Dropping dfxml table and updating the matrix for dfxml_db_exists "
         retval_dfxml, message_dfxml = bcaw_db.dbu_drop_table("bcaw_dfxmlinfo")
+
+        # update the image_matrix
+        bcawSetFlagInMatrix('dfxml_db_exists', False)
+
         if retval_img == 0 and retval_dfxml == 0:
             db_option_msg = "Dropped all tables "
         elif retval_img == -1 and retval_dfxml == -1:
@@ -935,12 +1044,23 @@ def admin():
         else:
             db_option_msg = message_img
     elif (form.radio_option.data.lower() == 'drop_img_table'):
+        print ">> Admin: Requested Image DB Drop "
+        ## print "[D] Dropping img table and updating the matrix for img_db_exists "
         db_option = 5
         retval, db_option_msg = bcaw_db.dbu_drop_table("bcaw_images")
+
+        # update the image_matrix
+        bcawSetFlagInMatrix('img_db_exists', False)
+
     elif (form.radio_option.data.lower() == 'drop_dfxml_table'):
-        print "D: Reuested DFXML DB Drop "
+        print ">> Admin: Requested DFXML DB Drop "
+        ## print "[D] Dropping dfxml table and updating the matrix for dfxml_db_exists "
         db_option = 5
         retval, db_option_msg = bcaw_db.dbu_drop_table("bcaw_dfxmlinfo")
+
+        # update the image_matrix
+        bcawSetFlagInMatrix('dfxml_db_exists', False)
+
     elif (form.radio_option.data.lower() == 'generate_index'):
         # First biuld the index for th filenames. Then build the index
         # for the contents from the configured directory. The contents index
@@ -949,10 +1069,10 @@ def admin():
         db_option_msg = "Option not yet supported"
         dirFileNamesToIndex = bcaw_generate_file_list()
         if os.path.exists(dirFileNamesToIndex):
-            print("D: Indexing Filenames ")
+            ## print("[D]: Indexing Filenames ")
             index_dir = app.config['FILENAME_INDEXDIR']
             bcaw_index.IndexFiles(dirFileNamesToIndex, index_dir)
-            print("Filename Index built in directory ", index_dir)
+            print(">> Filename Index built in directory ", index_dir)
             db_option_msg = "Index built"
         # Now build the indexes for the content files fromn directory files_to-index
 
@@ -964,9 +1084,19 @@ def admin():
         db_option_msg = "Index built"
 
         if os.path.exists(dirFilesToIndex) :
-            print "Building Indexes for contents in ", dirFilesToIndex
+            print ">> Building Indexes for contents in ", dirFilesToIndex
             bcaw_index.IndexFiles(dirFilesToIndex, indexDir)
-            print "Built indexes for contents in ", indexDir
+            print ">> Built indexes for contents in ", indexDir
+    elif (form.radio_option.data.lower() == 'show_image_matrix'):
+        db_option = 7
+        db_option_msg = "Image Matrix "
+        # Send the image list to the template
+        ## print "[D] Displaying Image Matrix: ", image_matrix
+        return render_template('fl_admin_imgmatrix.html',
+                           db_option=str(db_option),
+                           db_option_msg=str(db_option_msg),
+                           image_matrix=image_matrix,
+                           form=form)
 
     return render_template('fl_admin_results.html',
                            db_option=str(db_option),
