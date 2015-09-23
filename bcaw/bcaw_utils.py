@@ -94,7 +94,7 @@ class bcaw:
         return (self.num_partitions)
 
     def bcawGenFileList(self, image_path, image_index, partition_num, root_path):
-        ## print("D1: image_path: {} index: {} part: {} rootpath: {}".format(image_path, image_index, partition_num, root_path))
+        print("D1: image_path: {} index: {} part: {} rootpath: {}".format(image_path, image_index, partition_num, root_path))
         img = pytsk3.Img_Info(image_path)
         # Get the start of the partition:
         part_start = self.partDictList[int(image_index)][partition_num-1]['start_offset']
