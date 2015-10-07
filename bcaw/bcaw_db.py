@@ -154,7 +154,6 @@ def bcawGetDfxmlInfo(dfxmlfile, img):
                    d_dbrec[vchild.tag] = vchild.text
     return d_dbrec
 
-
 def dbBrowseImages():
     """ This routine is called at initialization, soon after the tables are created.
         It goes through the disk images in image_dir and builds the db tables
@@ -212,7 +211,7 @@ def dbBrowseImages():
         else:
             continue
     #db.session.commit()
-  
+
     print 'D: Image_list: ', image_list
 
 def dbBuildDb(bld_imgdb = False, bld_dfxmldb = False):
@@ -244,69 +243,103 @@ def dbBuildDb(bld_imgdb = False, bld_dfxmldb = False):
             print "\nD: Generating table contents for Image: ", img
             ###global image_list
             ###image_list.append(img)
-
-            # No need to create table if it already exists
-            if dbu_does_table_exist_for_img(img, table_name):
-                print ">> Table already exists for image " , img
+            retval, return_msg = dbBuildTableForImage(img, bld_imgdb, bld_dfxmldb)
+            if retval < 0:
+                print "Table NOT generated for image {}, reason: {} ".format(img, return_msg)
                 continue
             else:
-                print ">> Table for image {} does not exist: ".format(img)
-                db_login.create_all()
-                table_added += 1
+                image_index += 1
 
-                if bld_imgdb:
-                    # update the image_matrix
-                    print "D: dbBuildDb: Updating the matrix for img_db_exists "
-                    image_browse.bcawSetFlagInMatrix('img_db_exists', bld_imgdb)
-
-                if bld_dfxmldb:
-                    print "D: dbBuildDb: Updating the matrix for dfxml_db_exists "
-                    image_browse.bcawSetFlagInMatrix('dfxml_db_exists', bld_dfxmldb)
-
-            # FIXME: Partition info will be added to the metadata info
-            # Till then the following three lines are not necessary.
-            dm = bcaw_utils.bcaw()
-            image_path = image_dir+'/'+img
-            dm.num_partitions = dm.bcawGetNumPartsForImage(image_path, image_index)
-            xmlfile = dm.dbGetImageInfoXml(image_path)
-            if (xmlfile == None):
-                print("No XML file generated for image info. Returning")
-                return (-1, "No Image XML File generated")
-            print("XML File {} generated for image {}".format(xmlfile, img))
-
-            dfxmlfile = dm.dbGetInfoFromDfxml(image_path)
-            if (dfxmlfile == None):
-                print(">> No DFXML file generated for image info. Returning")
-                return (-1, "No DFXML generated")
-
-            print(">> DFXML File {} generated for image {}".format(dfxmlfile, img))
-
-            # Read the XML file and populate the record for this image
-            if bld_imgdb:
-                dbrec = bcawGetXmlInfo(xmlfile)
-
-                # FIXME: Retained temporarily. Probably not needed.
-                ##dbu_create_table_if_doesntexist("bcaw_images")
-                dbrec['image_name'] = img
-
-                # Populate the db:
-                # Add the created record/session to the DB
-                bcawDbSessionAdd(dbrec)
-
-                ## print("D: Adding dbrec session to the DB: ", dbrec)
-            if bld_dfxmldb:
-                d_dbrec = bcawGetDfxmlInfo(dfxmlfile, img)
-
-            image_index +=1
         else:
             continue
-    #db.session.commit()
 
-    print 'D: Image_list: ', image_list
+    ## print "[D]: Image_list: ", image_list
     if table_added > 0:
         return(0, "New tables added to the DB")
     else:
         return(0, "Table entries exist for all images")
+
+def dbBuildTableForImage(img, bld_imgdb = False, bld_dfxmldb = False):
+    """ This routine builds/adds the DFXML table entry to the DB for the
+        specified image. This is needed where a user selects an individual 
+        image in the image matrix and opts to add or delete corresponding table.
+    """
+    table_added = 0
+    if bld_imgdb and bld_dfxmldb:
+        # table_name set to dfxmlinfo - if it exists, bcaw_images has to be there.
+        table_name = "bcaw_dfxmlinfo"
+    else:
+        if bld_imgdb:
+            table_name = "bcaw_images"
+        elif bld_dfxmldb:
+            table_name = "bcaw_dfxmlinfo"
+        else:
+            # if bld_imgdb == False and bld_dfxmldb == False:
+            return(-1, "No DB Specified")
+
+    if not img.endswith(".E01") or img.endswith(".AFF"):
+        print ">> Not building Table: Wrong image type: ", img
+        return(-1, "Wrong Image Type")
+
+    # No need to create table if it already exists
+    if dbu_does_table_exist_for_img(img, table_name):
+        print ">> Table already exists for image " , img
+        return(-2, "Table entry exists for the image")
+    else:
+        print ">> Table for image {} does not exist: ".format(img)
+        db_login.create_all()
+        table_added += 1
+
+    if bld_imgdb:
+        # update the image_matrix
+        print "D: dbBuildTableForImage: Updating the matrix for img_db_exists "
+
+        # By setting image to None, it sets the flags for all images. We don't 
+        # do individual flag setting for imgdb.
+        image_browse.bcawSetFlagInMatrix('img_db_exists', bld_imgdb, None)
+
+    if bld_dfxmldb:
+        print "D: dbBuildTableForImage: Updating the matrix for dfxml_db_exists "
+        image_browse.bcawSetFlagInMatrix('dfxml_db_exists', bld_dfxmldb, img)
+    # FIXME: Partition info will be added to the metadata info
+    # Till then the following three lines are not necessary.
+    image_index = image_browse.bcawGetImageIndex(str(img), False)
+    dm = bcaw_utils.bcaw()
+    image_path = image_dir+'/'+img
+    dm.num_partitions = dm.bcawGetNumPartsForImage(image_path, image_index)
+    xmlfile = dm.dbGetImageInfoXml(image_path)
+    if (xmlfile == None):
+        print("No XML file generated for image info. Returning")
+        return (-1, "No Image XML File generated")
+    print("XML File {} generated for image {}".format(xmlfile, img))
+
+    dfxmlfile = dm.dbGetInfoFromDfxml(image_path)
+    if (dfxmlfile == None):
+        print(">> No DFXML file generated for image info. Returning")
+        return (-1, "No DFXML generated")
+
+    print(">> DFXML File {} generated for image {}".format(dfxmlfile, img))
+
+    # Read the XML file and populate the record for this image
+    if bld_imgdb:
+        dbrec = bcawGetXmlInfo(xmlfile)
+
+        # FIXME: Retained temporarily. Probably not needed.
+        ##dbu_create_table_if_doesntexist("bcaw_images")
+        dbrec['image_name'] = img
+
+        # Populate the db:
+        # Add the created record/session to the DB
+        bcawDbSessionAdd(dbrec)
+
+        ## print("D: Adding dbrec session to the DB: ", dbrec)
+    if bld_dfxmldb:
+        d_dbrec = bcawGetDfxmlInfo(dfxmlfile, img)
+    if table_added > 0:
+        return(0, "New tables added to the DB")
+    else:
+        retstr = "Table entries exist for the image " + img 
+        return(0, retstr)
 
 class BcawImages(db_login.Model):
     __tablename__ = 'bcaw_images'
@@ -505,9 +538,45 @@ def dbu_drop_table(table_name):
         bcawSetFlagInMatrix('img_db_exists', False)
 
         '''
-        ## print "[D]:dbu_drop_table: returning message_str ", message_string
+        ## print "[D]:execute_cmd: returning message_str ", message_string
         return(0, message_string)
     except:
+        # Table doesn't exist
+        print ">> Table {} does not exist ".format(table_name)
+        message_string = "Table "+ table_name + " does not exist"
+        return(-1, message_string)
+
+def dbu_execute_dbcmd(table_name, function, image_name):
+    """ DB utility function to execute the command specified by 'function'
+        for the given image.
+    """
+    conn = dbu_get_conn()
+    c = conn.cursor()
+    if function in "delete_table":
+        psql_cmd = "drop table " + table_name
+        message_string = "Dropped table "+ table_name
+    elif function in "delete_entries_for_image":
+        psql_cmd = "delete from "+table_name+" where image_name like '"+ image_name + "'"
+        print "D: Psql cmd: ", psql_cmd
+        message_string = "Deleted rows from table "+ table_name
+    else:
+        print "D: psql function {} not supported".format(function)
+        message_string = "psql function " + function + " not supported"
+        return(-1, message_string)
+
+    print ">> Executing DB Command: ", psql_cmd
+    try:
+        c.execute(psql_cmd)
+        print ">> PSQL function {} Executed ".format(function)
+        conn.commit()
+
+        # update the image_matrix
+        ## print "[D]: dbu_execute_cmd: Updating the matrix for img_db_exists " 
+        image_browse.bcawSetFlagInMatrix('dfxml_db_exists', False, image_name)
+
+        ## print "[D]:dbu_execute_cmd: returning message_str ", message_string
+        return(0, message_string)
+    except IOError as err:
         # Table doesn't exist
         print ">> Table {} does not exist ".format(table_name)
         message_string = "Table "+ table_name + " does not exist"
