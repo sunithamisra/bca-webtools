@@ -13,7 +13,7 @@
 #
 
 from flask import Flask, render_template, url_for, Response, stream_with_context, request, flash, session, redirect
-from bcaw_forms import ContactForm, SignupForm, SigninForm, QueryForm, adminForm
+from bcaw_forms import ContactForm, SignupForm, SigninForm, QueryForm, adminForm, buildForm
 
 import pytsk3
 import os, sys, string, time, re
@@ -183,7 +183,7 @@ def bcawBrowseImages(db_init=True):
     for img in os.listdir(image_dir):
         if img.endswith(".E01") or img.endswith(".AFF"):
             ## print img
-            global image_list
+            ### global image_list
 
             dm = bcaw()
             image_path = image_dir+'/'+img
@@ -195,27 +195,6 @@ def bcawBrowseImages(db_init=True):
             image_db_list.append(idb)
  
             ## print("D: IDB: image_index:{}, image_name:{}, acq_date:{}, md5: {}".format(image_index, idb.image_name, idb.acq_date, idb.md5)) 
-            #xxx FIXME comment out the below code and run tests. We don't need to 
-            # do this as we don't create db entries at startup
-
-            '''
-            # Now download the files in the image to build the indexes.
-            # FIXME: For now, I am downloading all the text files. Going forward,
-            # each file is indexed and once the index is appended to the existing
-            # index list, is deleted. This way we don't have to make space for all the
-            # files in all the images
-            temp_root_dir = "/vagrant"
-            for p in range(0, dm.num_partitions):
-                # make the directory for this img and partition
-                part_dir = str(temp_root_dir) + '/img'+str(image_index)+"_"+ str(p)
-                ## print("Part Dir: ", part_dir)
-                #os.makedir(part_dir)
-                file_list_root, fs = dm.bcawGenFileList(image_path, image_index,
-                                             int(p), '/')
-                ## print("D: Calling bcawDnldRepo with root ", file_list_root)
-                # NOTE: The following is under construction. Hence commented out.
-                ####bcawDnldRepo(file_list_root, part_dir, image_index, p, image_path, '/')
-            '''
 
             # Populate the image info table with this image name and index
             if bcawIsImgInMatrix(img):
@@ -226,7 +205,7 @@ def bcawBrowseImages(db_init=True):
         else:
             continue
 
-    global partition_in
+    ### global partition_in
 
     # Render the template for main page.
     # print 'D: Image_list: ', image_list
@@ -658,7 +637,7 @@ def home():
     for img in os.listdir(image_dir):
         if img.endswith(".E01") or img.endswith(".AFF"):
             ## print img
-            global image_list
+            ### global image_list
             image_list.append(img)
 
             dm = bcaw()
@@ -910,7 +889,46 @@ def bcawSetIndexFlag(image_index):
     else:
         print ">> bcawSetIndexFlag: image_index not found ", image_index
 
-def bcawSetFlagInMatrix(flag, value):
+def bcawSetFlagInMatrix(flag, value, image_name):
+    """ This routine sets the given flag (in bcaw_imginfo) to the given value,
+        in the image matrix, for all the images present.
+    """
+    print "[D] bcawSetFlagInMatrix: flag, value: ", flag, value, image_name
+    print "[D] bcawSetFlagInMatrix: Image Matrix Before: ", image_matrix
+    i = 0
+    for img_tbl_item in image_matrix:
+        if flag == 'img_name':
+            if img_tbl_item['img_name'] == image_name:
+                img_tbl_item.update({bcaw_imginfo[4]:1})
+                break
+
+        elif flag == 'img_db_exists':
+            # Set img_db_exists to the given value for every image in the image_table
+            if img_tbl_item['img_name'] == image_name:
+                img_tbl_item.update({bcaw_imginfo[2]:value})
+                img_tbl_item.update({bcaw_imginfo[1]:image_name})
+                print "[D] Setting flag img_db_exists in the image matrix for image ", image_name
+                break
+            else:
+                # Update the flag for all images
+                img_tbl_item.update({bcaw_imginfo[2]:value})
+
+        elif flag == 'dfxml_db_exists':
+            # Set dfxml_db_exists to the given value for every image in the image_table
+            if img_tbl_item['img_name'] == image_name:
+                print "[D] Setting flag dfxml_db_exists to {} in the image matrix for image {}".format(value, image_name)
+                img_tbl_item.update({bcaw_imginfo[3]:value})
+                img_tbl_item.update({bcaw_imginfo[1]:image_name})
+                break
+            else:
+                # Update the flag for all images
+                img_tbl_item.update({bcaw_imginfo[3]:value})
+
+        i += 1
+    return
+
+    ## print "[D] bcawSetFlagInMatrix: Image Matrix After setting the falg: ", image_matrix
+def bcawSetFlagInMatrixPerImage(flag, value, image):
     """ This routine sets the given flag (in bcaw_imginfo) to the given value,
         in the image matrix, for all the images present.
     """
@@ -934,8 +952,6 @@ def bcawSetFlagInMatrix(flag, value):
             img_tbl_item.update({bcaw_imginfo[3]:value})
 
         i += 1
-
-    ## print "[D] bcawSetFlagInMatrix: Image Matrix After setting the falg: ", image_matrix
 
 def bcawIsImgInMatrix(img):
     for img_tbl_item in image_matrix:
@@ -1029,13 +1045,13 @@ def admin():
         retval_img, message_img = bcaw_db.dbu_drop_table("bcaw_images")
 
         # update the image_matrix
-        bcawSetFlagInMatrix('img_db_exists', False)
+        bcawSetFlagInMatrix('img_db_exists', False, None)
 
         ## print "[D] Dropping dfxml table and updating the matrix for dfxml_db_exists "
         retval_dfxml, message_dfxml = bcaw_db.dbu_drop_table("bcaw_dfxmlinfo")
 
         # update the image_matrix
-        bcawSetFlagInMatrix('dfxml_db_exists', False)
+        bcawSetFlagInMatrix('dfxml_db_exists', False, None)
 
         if retval_img == 0 and retval_dfxml == 0:
             db_option_msg = "Dropped all tables "
@@ -1050,7 +1066,7 @@ def admin():
         retval, db_option_msg = bcaw_db.dbu_drop_table("bcaw_images")
 
         # update the image_matrix
-        bcawSetFlagInMatrix('img_db_exists', False)
+        bcawSetFlagInMatrix('img_db_exists', False, None)
 
     elif (form.radio_option.data.lower() == 'drop_dfxml_table'):
         print ">> Admin: Requested DFXML DB Drop "
@@ -1059,7 +1075,7 @@ def admin():
         retval, db_option_msg = bcaw_db.dbu_drop_table("bcaw_dfxmlinfo")
 
         # update the image_matrix
-        bcawSetFlagInMatrix('dfxml_db_exists', False)
+        bcawSetFlagInMatrix('dfxml_db_exists', False, None)
 
     elif (form.radio_option.data.lower() == 'generate_index'):
         # First biuld the index for th filenames. Then build the index
@@ -1092,11 +1108,66 @@ def admin():
         db_option_msg = "Image Matrix "
         # Send the image list to the template
         ## print "[D] Displaying Image Matrix: ", image_matrix
+        build_form = buildForm()
         return render_template('fl_admin_imgmatrix.html',
                            db_option=str(db_option),
                            db_option_msg=str(db_option_msg),
                            image_matrix=image_matrix,
+                           build_form=build_form,
                            form=form)
+
+    # request.form will be in the form:
+    # ImmutableMultiDict([('delete_table, <image>), ), )'delete_form', 'submit')])
+    # We need the image name from this dict. So we use the first element of the
+    # list to get the image name so we know which image DB the table is being added
+    # to or deleted from. 
+    bld_list = request.form.getlist('build_table')
+    delete_list = request.form.getlist('delete_table')
+
+    ## print "D2: Build_list: ", bld_list
+    ## print "D2: Delete_list: ", delete_list
+
+    checked_build = 'build_table' in request.form
+    checked_delete = 'delete_table' in request.form
+
+    if checked_build or checked_delete:
+
+        ## print "D2: checked_build ", checked_build
+        ## print "D2: checked_delete: ", checked_delete
+        if checked_build == True and checked_delete == True:
+            db_option_msg = "Invalid combination of checked boxes"
+        elif checked_build == True:
+            print "D: Checked build: build_table_list: ", bld_list[0]
+            image_name = bld_list[0]
+
+            if bld_list[0] == 'submit':
+                # This means no image is selected.
+                print ">> No image selected. Returning"
+                db_option_msg = "Error: No Image Selected"
+            elif bcaw_db.dbu_does_table_exist_for_img(image_name, 'bcaw_dfxmlinfo'):
+                # First check if the dfxml table entry exists for this image.
+                print ">> Table bcaw_dfxmlinfo already exists in the DB "
+                db_option_msg = "Table bcaw_dfxmlinfo already exists for image " + image_name
+                print ">> Building DFXML table for image ", image_name 
+                retval, db_option_msg = bcaw_db.dbBuildTableForImage(image_name, bld_imgdb = False, bld_dfxmldb = True)
+                if retval == 0:
+                    db_option_msg = "Built DFXML Table"
+        elif checked_delete == True:
+            print "D: delete_table_list: ", delete_list[0]
+            image_name = delete_list[0]
+
+            if delete_list[0] == 'submit':
+                # This means no image is selected.
+                print ">> No image selected. Returning"
+                db_option_msg = "Error: No Image Selected"
+            elif not bcaw_db.dbu_does_table_exist_for_img(image_name, 'bcaw_dfxmlinfo'):
+                # First check if the dfxml table entry exists for this image.
+                print ">> Table bcaw_dfxmlinfo does not exist in the DB "
+                db_option_msg = "Table bcaw_dfxmlinfo does not exist for image " + image_name
+            else:
+                print ">> Deleting Entries for image {} from dfxml table".format(image_name)
+                retval, db_option_msg = \
+                   bcaw_db.dbu_execute_dbcmd("bcaw_dfxmlinfo", "delete_entries_for_image", image_name)
 
     return render_template('fl_admin_results.html',
                            db_option=str(db_option),
