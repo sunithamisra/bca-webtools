@@ -170,7 +170,7 @@ class QueryForm(Form):
             return search_list, "contents"
             
 class adminForm(Form):
-    radio_option = RadioField('Label', choices=[('Image_table', 'Build Image Table'), ('dfxml_table', 'Build DFXML Table'), ('all_tables', 'Build All Tables'), ('drop_img_table', 'Drop Image Table'), ('drop_dfxml_table', 'Drop DFXML Table'), ('drop_all_tables', 'Drop All Tables'), ('generate_index', 'Generate Index'), ('show_image_matrix','Show Image Matrix')], default='Image_table')
+    radio_option = RadioField('Label', choices=[('Image_table', 'Build Image Table'), ('dfxml_table', 'Build DFXML Table'), ('all_tables', 'Build All Tables'), ('drop_img_table', 'Drop Image Table'), ('drop_dfxml_table', 'Drop DFXML Table'), ('drop_all_tables', 'Drop All Tables'), ('generate_index', 'Generate Index'), ('show_image_matrix','Show Image Matrix')])
     submit = SubmitField("Submit")
  
     def __init__(self, *args, **kwargs):
@@ -180,3 +180,16 @@ class adminForm(Form):
         if not Form.validate(self):
             print(">> bcaw_forms: Validate failed. returning ");
             return None, self.radio_option.data.lower()
+
+class buildForm(Form):
+    radio_option = RadioField('Label', choices=[('build_db_table', 'Build DB Table'), ('rmove_db_table', 'Remove dB Table')], default='')
+    submit = SubmitField("Submit")
+
+    def __init__(self, *args, **kwargs):
+        Form.__init__(self, *args, **kwargs)
+
+    def buildAction(self):
+        if not Form.validate(self):
+            print(">> bcaw_forms: Validate failed. returning ");
+            return None, self.radio_option.data.lower()
+
